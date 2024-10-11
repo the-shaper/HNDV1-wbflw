@@ -18,10 +18,12 @@ You can find a simple example of a Webflow site using this setup [here](https://
 ## How to use with Webflow
 
 ### 🇫🇷 French
-The doc is [here](https://github.com/armandsalle/vite-javascript-webflow/blob/main/HowToUse_JS_FR.md) 
+
+The doc is [here](https://github.com/armandsalle/vite-javascript-webflow/blob/main/HowToUse_JS_FR.md)
 
 ### 🇬🇧 English
-The doc is [here](https://github.com/armandsalle/vite-javascript-webflow/blob/main/HowToUse_JS_EN.md) 
+
+The doc is [here](https://github.com/armandsalle/vite-javascript-webflow/blob/main/HowToUse_JS_EN.md)
 
 <br />
 

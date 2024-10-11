@@ -8,3 +8,7 @@ coverage
 example
 vite.config.js
 README.md
+
+src/**/*.js 
+
+to-do.md

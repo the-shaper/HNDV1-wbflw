@@ -1,8 +1,14 @@
-import animateTitle from './features/animateTitle'
-import createBadge from './features/createBasge'
 import './styles/style.css'
+import initPortfolio from './features/portfolio/portfolio'
+import initPortfolioScroll from './features/portfolio/portfolioscroll'
+import initGalleryTabs from './features/portfolio/gallerytabs'
+import initCategoriesMenu from './features/portfolio/categories-menu'
 
 console.log('Welcome to Vite + JS + Webflow!')
 
-createBadge()
-animateTitle()
+document.addEventListener('DOMContentLoaded', () => {
+  initPortfolio()
+  initPortfolioScroll()
+  initGalleryTabs()
+  initCategoriesMenu()
+})

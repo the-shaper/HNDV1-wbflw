@@ -1,0 +1,8 @@
+.slider-bg_component {
+  transition: opacity 0.1s ease-in-out, background-image 0.1s ease-in-out;
+  opacity: 1;
+}
+
+.slider-bg_component.transitioning {
+  opacity: 0;
+}

@@ -27,7 +27,11 @@ function initGalleryTabs() {
     let initialBgImage = null
 
     for (let img of tabBackgrounds) {
-      if (img.src) {
+      if (
+        img.src &&
+        img.getAttribute('data-tab-bg') &&
+        img.getAttribute('data-color-mode')
+      ) {
         initialBgImage = img
         break
       }
@@ -48,12 +52,16 @@ function initGalleryTabs() {
 
       // Set initial blur effect
       const blurAttribute = initialBgImage.getAttribute('data-blur')
-      const applyBlur =
-        blurAttribute === 'true' || blurAttribute === '{{ bg-1-blur }}'
+      // Highlight: Changed blur logic
+      const applyBlur = blurAttribute === 'true'
+      console.log('Initial blur attribute:', blurAttribute)
+      console.log('Apply initial blur:', applyBlur)
       galleryBackground.classList.toggle('blur-effect', applyBlur)
     } else {
-      // No background images found, default to light mode
-      console.log('No background images found. Defaulting to light mode.')
+      // No valid background images found, default to light mode and no blur
+      console.log(
+        'No valid background images found. Defaulting to light mode and no blur.'
+      )
       colorMode.goDark(false, false, galleryBackground)
       colorMode.goDark(false, false, document.documentElement)
       galleryBackground.style.backgroundImage = 'none'
@@ -143,19 +151,18 @@ function initGalleryTabs() {
             `img[data-tab-bg="${target}"]`
           )
 
-          if (bgImageElement) {
+          if (bgImageElement && bgImageElement.src) {
             // Get the color mode from the data attribute
             const colorModeValue =
               bgImageElement.getAttribute('data-color-mode')
             console.log('Color mode value:', colorModeValue)
 
-            if (colorModeValue) {
-              // Apply the color mode to the background
-              const isDarkMode = colorModeValue.toLowerCase() === 'dark'
-              console.log('Applying dark mode:', isDarkMode)
-              colorMode.goDark(isDarkMode, true, galleryBackground)
-              colorMode.goDark(isDarkMode, true, document.documentElement)
-            }
+            // Default to light mode if color mode is not specified
+            const isDarkMode =
+              colorModeValue && colorModeValue.toLowerCase() === 'dark'
+            console.log('Applying dark mode:', isDarkMode)
+            colorMode.goDark(isDarkMode, true, galleryBackground)
+            colorMode.goDark(isDarkMode, true, document.documentElement)
 
             let backgroundImage =
               bgImageElement && bgImageElement.src ? bgImageElement.src : ''
@@ -190,17 +197,11 @@ function initGalleryTabs() {
               handleTransitionEnd
             )
 
-            const blurAttribute = bgImageElement
-              ? bgImageElement.getAttribute('data-blur')
-              : 'false'
+            // Highlight: Updated blur logic
+            const blurAttribute = bgImageElement.getAttribute('data-blur')
             console.log('Blur attribute:', blurAttribute)
 
-            const applyBlur =
-              blurAttribute === 'true' ||
-              blurAttribute === '{{ bg-1-blur }}' ||
-              blurAttribute === '{{ bg-2-blur }}' ||
-              blurAttribute === '{{ bg-3-blur }}' ||
-              blurAttribute === '{{ bg-4-blur }}'
+            const applyBlur = blurAttribute === 'true'
             console.log('Apply blur:', applyBlur)
 
             if (applyBlur) {
@@ -230,6 +231,15 @@ function initGalleryTabs() {
             }
 
             ScrollTrigger.refresh()
+          } else {
+            // No background image or invalid data, default to light mode and no blur
+            console.log(
+              'No valid background image. Defaulting to light mode and no blur.'
+            )
+            colorMode.goDark(false, true, galleryBackground)
+            colorMode.goDark(false, true, document.documentElement)
+            galleryBackground.style.backgroundImage = 'none'
+            galleryBackground.classList.remove('blur-effect')
           }
         })
       })

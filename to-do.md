@@ -1,9 +1,16 @@
 
+## UI 
+- [ ] Organize assets in folders
+- [ ] Export nav arrows from figma to svg
+- [ ] Export active navguide arrows (orange or yellow) from figma to svg
+
 ##Portfolio
 -[x] Fix and re-wire existing code
 -[x] Tabs: Change background according to tab and add subtle transition
--[ ] Fix inverted colors and strike the perfect balance of contrast
--[ ] Fix the Return to Showcase button (either invert it or make it transparent)
+-[x] Fix inverted colors and strike the perfect balance of contrast
+-[ ] Set the correct pointers for the links
+-[ ] Intro: add frame or correct typesetting for the text intro
+-[ ] Fix the Return to Showcase button; either invert it or make it transparent in color, and replace the arrow with a vector
 -[ ] Add arrow nav flash/interaction in the releases section
 -[ ] Releases tab: (scrolltrigger?) make it so that the right-hand collumn is scrollable from anywhere on the screen
 -[ ] CMS Link Industry/Type/PartnerCode

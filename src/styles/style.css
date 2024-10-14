@@ -52,4 +52,6 @@ body.initial-load .slider-bg_component {
 
 .slider-bg_component.transitioning {
   opacity: 0;
+  filter: blur(10px);
+  transform: scale(1.075);
 }

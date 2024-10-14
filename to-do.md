@@ -31,3 +31,20 @@
 
 
 
+What counts as progress for this company?
+- A working website
+  - [ ] A functioning portfolio
+  - [ ] A functioning plan builder
+  - [ ] A functioning plans page
+  - [ ] A functioning home page
+  - [ ] A playful "here we come" label page
+- A very basic client dashboard
+  - [ ] A functioning billing history "pay, continue, cancel"
+
+- First AYW Client
+
+What can I get rid of?
+- The "About" page
+- The "Contact" page
+- The "Blog" page
+- The "Careers" page

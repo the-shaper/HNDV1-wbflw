@@ -1,33 +1,41 @@
-.js-badge {
-  position: fixed;
-  top: 32px;
-  left: 32px;
-  border-radius: 16px;
-  background-color: lightblue;
-  color: black;
-  padding: 8px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  line-height: 1.2;
-  font-size: 14px;
-  cursor: pointer;
-  z-index: 10000;
-  transition: background-color 0.1s ease-out;
-}
-
-.js-badge:hover {
-  background-color: rgb(228, 137, 193);
-}
-
-body {
-  background-color: red;
-}
-
 /* WEBFLOW: GALLERY SECTION */
 
+/* :root {
+  --dynamic-text-color: var(--MintBlack); Default to your darkest color
+  --dynamic-hover-color: var(--MintDark); Default hover color 
+  --dynamic-active-color: var(--MintGray); Color for active elements 
+} */
+
+/* Default state for all dynamic color elements */
+/* .project-subtitle-h3,
+.project-name-h1,
+.project-subtitle-h2,
+.paragraph-andale-mono.metadata,
+.mini-heading-title.metadata,
+.arrow-icon-button.grey,
+.lower-nav-text.grey-ish,
+.paragraph-andale-mono.navguide,
+.gal-tab,
+.squarecorner-unit,
+.scroll-dot,
+.scroll-line-project,
+.gallery-scroll-card,
+.tiny-tag-wrapper,
+.paragraph-andale-mono.tiny-tag,
+.item-card-title,
+.mono-paragraph.scroll-card-subtitle,
+.mono-paragraph.scroll-card-gal,
+.mini-heading-title.cardmeta,
+.mint-deets-button,
+.item-gallery-dot,
+.scroll-line-project {
+  color: var(--dynamic-text-color);
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+
+
+/* Rest of your existing styles */
 body.initial-load .slider-bg_component {
   transition: none;
 }

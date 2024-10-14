@@ -47,7 +47,7 @@ body.initial-load .slider-bg_component {
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-  background-color: #f0f0f0; /* Default background color */
+  /* background-color: #f0f0f0;  Default background color */
 }
 
 .slider-bg_component.transitioning {

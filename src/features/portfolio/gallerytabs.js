@@ -10,6 +10,74 @@ function initGalleryTabs() {
     0.3
   )
 
+  // Function to set initial background and color mode
+  function setInitialBackgroundAndColorMode() {
+    const backgroundUrls = document.getElementById('backgroundUrls')
+    const galleryBackground = document.getElementById('galleryBackground')
+
+    if (!backgroundUrls || !galleryBackground) {
+      console.error('Required elements not found for initial setup')
+      return
+    }
+
+    // Check all tab backgrounds
+    const tabBackgrounds = backgroundUrls.querySelectorAll(
+      'img[data-tab-bg^="tab"]'
+    )
+    let initialBgImage = null
+
+    for (let img of tabBackgrounds) {
+      if (img.src) {
+        initialBgImage = img
+        break
+      }
+    }
+
+    if (initialBgImage) {
+      // Set initial background
+      galleryBackground.style.backgroundImage = `url(${initialBgImage.src})`
+
+      // Set initial color mode
+      const initialColorMode = initialBgImage.getAttribute('data-color-mode')
+      const isDarkMode =
+        initialColorMode && initialColorMode.toLowerCase() === 'dark'
+      console.log('Initial color mode:', initialColorMode || 'light (default)')
+      console.log('Applying initial dark mode:', isDarkMode)
+      colorMode.goDark(isDarkMode, false, galleryBackground)
+      colorMode.goDark(isDarkMode, false, document.documentElement)
+
+      // Set initial blur effect
+      const blurAttribute = initialBgImage.getAttribute('data-blur')
+      const applyBlur =
+        blurAttribute === 'true' || blurAttribute === '{{ bg-1-blur }}'
+      galleryBackground.classList.toggle('blur-effect', applyBlur)
+    } else {
+      // No background images found, default to light mode
+      console.log('No background images found. Defaulting to light mode.')
+      colorMode.goDark(false, false, galleryBackground)
+      colorMode.goDark(false, false, document.documentElement)
+      galleryBackground.style.backgroundImage = 'none'
+      galleryBackground.classList.remove('blur-effect')
+    }
+  }
+
+  // Use MutationObserver to detect when backgroundUrls is populated
+  const observer = new MutationObserver((mutations, obs) => {
+    const backgroundUrls = document.getElementById('backgroundUrls')
+    if (
+      backgroundUrls &&
+      backgroundUrls.querySelector('img[data-tab-bg="tab1"]')
+    ) {
+      setInitialBackgroundAndColorMode()
+      obs.disconnect() // Stop observing once we've set the initial state
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  })
+
   function galleryTabs() {
     document.addEventListener('DOMContentLoaded', function () {
       const buttons = document.querySelectorAll('.gal-tab')
@@ -44,31 +112,6 @@ function initGalleryTabs() {
           )}: Color Mode = ${img.getAttribute('data-color-mode')}`
         )
       })
-
-      // Set initial background image and color mode
-      const initialBgImage = backgroundUrls.querySelector('img')
-      if (initialBgImage && initialBgImage.src) {
-        galleryBackground.style.backgroundImage = `url(${initialBgImage.src})`
-
-        // Apply blur if needed
-        const blurAttribute = initialBgImage.getAttribute('data-blur')
-        const applyBlur =
-          blurAttribute === 'true' || blurAttribute.startsWith('{{ bg-')
-
-        if (applyBlur) {
-          galleryBackground.classList.add('blur-effect')
-        }
-
-        // Apply initial color mode
-        const initialColorMode = initialBgImage.getAttribute('data-color-mode')
-        if (initialColorMode) {
-          const isDarkMode = initialColorMode.toLowerCase() === 'dark'
-          console.log('Initial color mode:', initialColorMode)
-          console.log('Applying initial dark mode:', isDarkMode)
-          colorMode.goDark(isDarkMode, false, galleryBackground)
-          colorMode.goDark(isDarkMode, false, document.documentElement)
-        }
-      }
 
       // Ensure first content is visible
       if (contents.length > 0) {

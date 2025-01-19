@@ -55,3 +55,51 @@ body.initial-load .slider-bg_component {
   filter: blur(10px);
   transform: scale(1.075);
 }
+
+/* agency–>showcase tabs */
+
+.tab[aria-selected='true'] {
+  /* Active tab styles */
+  background-color: #0189d7;
+  color: var(--color--background);
+}
+
+/* Optional: hover styles for inactive tabs */
+.tab[aria-selected='false']:hover {
+  color: var(--color--accent);
+}
+
+/* hide scrollbar */
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 0px;
+}
+
+.custom-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.navbar-link.show-arrow .arrow-icon {
+  display: block !important; /* Force the display */
+}
+
+.disabled {
+  pointer-events: none;
+  opacity: 0.33;
+}
+
+/* ayw craft icon */
+.ayw-craft-icon {
+  clip-path: polygon(0 0, calc(100% - 11%) 0, 100% 11%, 100% 100%, 0 100%);
+  border-radius: 3px;
+  border-color: #eaff36;
+}
+
+/* .ayw-craft-icon {
+  border-radius: 3px;
+  border-color: #eaff36;
+  --mask: linear-gradient(-135deg, #0000 8%, #000 0);
+  -webkit-mask: var(--mask);
+  mask: var(--mask);
+} */

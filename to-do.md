@@ -1,32 +1,59 @@
 
 ## UI 
 - [ ] Organize assets in folders
-- [ ] Export nav arrows from figma to svg
-- [ ] Export active navguide arrows (orange or yellow) from figma to svg
+- [x] Export nav arrows from figma to svg
+
+##Plan Builder [AYW]
+-[ ] Fix and import existing code (from codesandbox to vscode)
+-[ ] Revisit design based on feedback
+-[ ] Connect all form elements
+-[ ] Test all form elements
 
 ##Portfolio
 -[x] Fix and re-wire existing code
 -[x] Tabs: Change background according to tab and add subtle transition
 -[x] Fix inverted colors and strike the perfect balance of contrast
--[ ] Set the correct pointers for the links
--[ ] Intro: add frame or correct typesetting for the text intro
--[ ] Fix the Return to Showcase button; either invert it or make it transparent in color, and replace the arrow with a vector
--[ ] Add arrow nav flash/interaction in the releases section
--[ ] Releases tab: (scrolltrigger?) make it so that the right-hand collumn is scrollable from anywhere on the screen
+-[!] Set the correct pointers for the links (!: they're not reacting properly, need to investigate further)
+-[x] Intro: add frame or correct typesetting for the text intro
+-[x] Fix the Return to Showcase button; either invert it or make it transparent in color, and replace the arrow with a vector
+-[x] Releases tab: (scrolltrigger?) make it so that the right-hand collumn is scrollable from anywhere on the screen
+-[x] correct the scrolling of scroll-nav-wrapper on tab change and reload
+-[x] Mudar código de showcase de codesandbox para vscode
+-[ ] MIT linkear el tab de releases de Agency Showcases con su colección correspondiente (cms collection treated as items)
 -[ ] CMS Link Industry/Type/PartnerCode
 -[ ] Releases: Remove horizontal overflow
 -[ ] Create the audio player component and connect it to the cms
 -[ ] Decide what to do with the portfolio shadow
+-[ ] Add arrow nav flash/interaction in the releases section (nonpriority)
 
-##Plan Builder
--[ ] Fix and re-wire existing code (from codesandbox to vscode)
--[ ] Revisit design based on feedback
--[ ] Connect all form elements
--[ ] Test all form elements
+###Portfolio/showcase metadata
+-[ ] Create field for "types" of project i.e. "type: internal project , client collaboration, partnership... and status: proof of concept, completed, in progress..."
+
+!!! - [ ] tab-panel.tab2 : Regresar a overflow hidden. Lo mismo para tab-panel.tab3 y tab-panel.tab1
+!!! - [ ] body : Regresar a overflow hidden
+
+
 
 ##Plans page
--[ ] Revisit design
--[ ] Adjust revisited design accordingly
+-[x] New Services Design
+- [x] Create anything you want site cards
+- [x] Create explanation tabs
+- [x] Create or update cms collection for plans
+-[x] Adjust revisited design accordingly 
+
+- [ ] Stylistic Refinements [LEAVE-FOR-LAST]
+
+Qué es funcional?
+- [x] Hacer colección cms del paquete y conectar los campos
+- [x] Hacer que las cards hagan "toggle" de panel
+- [x] Hacer el "tab board" sea funcional
+- [x] Asegurarme de que pueda reutilizar el componente del tab board
+
+Qué es estético?
+- [x] Cambiar de fondo al cambiar de tab
+- [ ] Hacer la interacción/animación de las cards
+- [ ] Agregar un gif de un totem real
+- [ ] Hacer una prueba con un export 3dJS [LEAVE-FOR-LAST]
 
 ##Home
 -[ ] Explore pointcloud + ai interaction
@@ -55,3 +82,7 @@ What can I get rid of?
 - The "Contact" page
 - The "Blog" page
 - The "Careers" page
+
+
+
+- estás escribiendo un to-do list para el 2025 y necesitas pensar en todos los pasos necesarios para llegar a la fecha de lanzamiento

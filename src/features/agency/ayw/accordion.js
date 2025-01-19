@@ -3,6 +3,12 @@ function initAccordionAYW() {
     constructor(element) {
       this.element = element
       this.items = element.querySelectorAll('.ayw-accordion-duo')
+      // Store dynamic elements for better performance
+      this.dynamicElements = {
+        tab1: document.querySelector('.ayw-dynamic-read-me.tab1'),
+        tab2: document.querySelector('.ayw-dynamic-read-me.tab2'),
+        tab3: document.querySelector('.ayw-dynamic-read-me.tab3'),
+      }
       this.init()
     }
 
@@ -30,6 +36,28 @@ function initAccordionAYW() {
       })
     }
 
+    updateDynamicElements(openPaneNumber) {
+      // Hide all dynamic elements first
+      Object.values(this.dynamicElements).forEach((element) => {
+        if (element) element.classList.add('off')
+      })
+
+      // If no pane is open (openPaneNumber is null) or invalid, show tab1 by default
+      if (!openPaneNumber) {
+        const defaultElement = this.dynamicElements.tab1
+        if (defaultElement) {
+          defaultElement.classList.remove('off')
+        }
+        return
+      }
+
+      // Show the corresponding dynamic element
+      const activeElement = this.dynamicElements[`tab${openPaneNumber}`]
+      if (activeElement) {
+        activeElement.classList.remove('off')
+      }
+    }
+
     toggleItem(clickedItem) {
       const content = clickedItem.querySelector('.ayw-accordion-pane')
       const contentInner = clickedItem.querySelector(
@@ -38,6 +66,12 @@ function initAccordionAYW() {
       const tabNumber = clickedItem.querySelector('.ayw-tab-number-wrapper')
       const tabTitle = clickedItem.querySelector('.ayw-tab-title-wrapper')
       const isOpen = clickedItem.classList.contains('is-active')
+      const paneNumber = clickedItem
+        .querySelector('.ayw-accordion-pane')
+        .getAttribute('open-pane')
+
+      // If the clicked item is already open, do nothing
+      if (isOpen) return
 
       // Close all other items
       this.items.forEach((item) => {
@@ -47,7 +81,6 @@ function initAccordionAYW() {
           const itemTabNumber = item.querySelector('.ayw-tab-number-wrapper')
           const itemTabTitle = item.querySelector('.ayw-tab-title-wrapper')
 
-          // Remove active state from tab number and title
           itemTabNumber?.classList.remove('is-active')
           itemTabTitle?.classList.remove('is-active')
 
@@ -59,26 +92,17 @@ function initAccordionAYW() {
         }
       })
 
-      // Toggle clicked item
-      if (!isOpen) {
-        clickedItem.classList.add('is-active')
-        tabNumber?.classList.add('is-active')
-        tabTitle?.classList.add('is-active')
-        gsap.to(content, {
-          height: contentInner.offsetHeight,
-          duration: 0.4,
-          ease: 'power2.out',
-        })
-      } else {
-        clickedItem.classList.remove('is-active')
-        tabNumber?.classList.remove('is-active')
-        tabTitle?.classList.remove('is-active')
-        gsap.to(content, {
-          height: 0,
-          duration: 0.4,
-          ease: 'power2.out',
-        })
-      }
+      // Open clicked item
+      clickedItem.classList.add('is-active')
+      tabNumber?.classList.add('is-active')
+      tabTitle?.classList.add('is-active')
+      gsap.to(content, {
+        height: contentInner.offsetHeight,
+        duration: 0.4,
+        ease: 'power2.out',
+      })
+      // Show corresponding dynamic element
+      this.updateDynamicElements(paneNumber)
     }
   }
 

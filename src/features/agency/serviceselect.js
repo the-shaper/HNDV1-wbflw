@@ -1,0 +1,259 @@
+function initServiceSelect() {
+  const panels = document.querySelectorAll('.accordion-panel')
+  // Add animation lock flag
+  let isAnimating = false
+
+  // Only proceed if we have panels
+  if (!panels.length) {
+    console.log('No accordion panels found - skipping initialization')
+    return
+  }
+
+  console.log('🚀 Initializing Service Select Accordion...')
+  // Set initial collapsed panel sizes using GSAP
+  setupInitialState()
+
+  // Add click event to all panels
+  panels.forEach((panel, index) => {
+    panel.addEventListener('click', () => {
+      console.log(`🖱️ Panel ${index} clicked.`)
+      // Don't do anything if animation is in progress or if clicked panel is already expanded
+      if (isAnimating) {
+        console.log(' L O C K E D: Animation in progress, click ignored.')
+        return
+      }
+      if (!panel.classList.contains('collapsed')) {
+        console.log(
+          ' L O C K E D: Clicked panel is already expanded, click ignored.'
+        )
+        return
+      }
+
+      // Set animation lock
+      console.log('🟢 Animation Lock Engaged.')
+      isAnimating = true
+
+      // Find the currently expanded panel
+      const expandedPanel = document.querySelector(
+        '.accordion-panel:not(.collapsed)'
+      )
+      console.log('🔍 Found expanded panel:', expandedPanel)
+
+      // Collapse the expanded panel
+      console.log('🎬 Starting collapse process for:', expandedPanel)
+      collapsePanel(expandedPanel)
+
+      // Expand the clicked panel
+      console.log(`🎬 Starting expand process for Panel ${index}:`, panel)
+      expandPanel(panel)
+    })
+  })
+
+  // Function to set up initial state - reworked for Collection List
+  function setupInitialState() {
+    console.log('🛠️ Setting up initial state...')
+    // Since all items have the same classes from Webflow Collection List,
+    // we need to programmatically set up initial states
+
+    // Make sure all panels except first are collapsed initially
+    panels.forEach((panel, index) => {
+      console.log(`-- Initializing Panel ${index} --`)
+      // Find potential content and cover elements within the panel
+      const panelContent = panel.querySelector('.panel-content')
+      const panelCover = panel.querySelector('.panel-cover')
+
+      if (index === 0) {
+        // First panel should be expanded
+        panel.classList.remove('collapsed')
+        console.log(` P${index}: Removed .collapsed`)
+        // Ensure expanded panel has correct styling
+        gsap.set(panel, {
+          width: '60svw', // Use svw consistently
+          overflow: 'visible',
+        })
+        console.log(` P${index}: GSAP set width: 60svw, overflow: visible`) // Updated log
+
+        // Make sure content is visible and active
+        if (panelContent) {
+          gsap.set(panelContent, {
+            opacity: 1,
+            scale: 1, // Adjusted scale for consistency
+          })
+          console.log(` P${index} Content: GSAP set opacity: 1, scale: 1`)
+          panelContent.classList.add('active') // Add active class
+          console.log(` P${index} Content: Added .active`)
+        }
+        // Make sure cover is inactive
+        if (panelCover) {
+          panelCover.classList.remove('active') // Remove active class
+          console.log(` P${index} Cover: Removed .active`)
+        }
+      } else {
+        // All other panels should be collapsed
+        panel.classList.add('collapsed')
+        console.log(` P${index}: Added .collapsed`)
+        // Apply collapsed styling
+        gsap.set(panel, {
+          width: '14svw', // Use svw consistently
+          overflow: 'hidden',
+        })
+        console.log(` P${index}: GSAP set width: 14svw, overflow: hidden`)
+
+        // Make sure content is styled appropriately and inactive
+        if (panelContent) {
+          gsap.set(panelContent, {
+            opacity: 0,
+            scale: 0.7,
+          })
+          // Note: Log message below had wrong opacity, corrected if needed, but keeping as is from original
+          console.log(` P${index} Content: GSAP set opacity: 0.1, scale: 0.7`)
+          panelContent.classList.remove('active') // Remove active class
+          console.log(` P${index} Content: Removed .active`)
+        }
+        // Make sure cover is active
+        if (panelCover) {
+          panelCover.classList.add('active') // Add active class
+          console.log(` P${index} Cover: Added .active`)
+        }
+      }
+    })
+    console.log('✅ Initial state setup complete.')
+  }
+
+  // Function to collapse a panel with animation
+  function collapsePanel(panel) {
+    if (!panel) {
+      console.log('💨 CollapsePanel: No panel provided, skipping.')
+      if (!document.querySelector('.accordion-panel:not(.collapsed)')) {
+        isAnimating = false
+        console.log('🔴 Animation Lock Released (no panel to collapse).')
+      }
+      return
+    }
+    console.log('💨 CollapsePanel: Starting collapse for', panel)
+
+    const panelContent = panel.querySelector('.panel-content')
+    const panelCover = panel.querySelector('.panel-cover')
+
+    if (panelContent) {
+      panelContent.classList.remove('active')
+      console.log('💨 CollapsePanel Content: Removed .active')
+    }
+    if (panelCover) {
+      panelCover.classList.add('active')
+      console.log('💨 CollapsePanel Cover: Added .active')
+    }
+
+    console.log('💨 CollapsePanel: Creating GSAP timeline...')
+    const timeline = gsap.timeline()
+
+    // Animate panel width and overflow using fromTo:
+    timeline.fromTo(
+      panel,
+      { width: '60svw', overflow: 'visible' }, // Start from expanded state
+      {
+        width: '14svw', // Animate to collapsed width
+        overflow: 'hidden', // Animate overflow
+        duration: 0.75,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          panel.classList.add('collapsed') // Add class AFTER animation
+          console.log('🏁 CollapsePanel COMPLETED: Added .collapsed to', panel)
+        },
+      },
+      0
+    )
+
+    // Animate panel content using fromTo:
+    if (panelContent) {
+      timeline.fromTo(
+        panelContent,
+        { opacity: 1, scale: 1 }, // Start from visible state
+        {
+          opacity: 0,
+          scale: 0.7,
+          duration: 0.75, // Match panel duration
+          ease: 'power2.inOut',
+        },
+        0
+      )
+    }
+    console.log('💨 CollapsePanel: GSAP fromTo timeline initiated.')
+  }
+
+  // Function to expand a panel with animation
+  function expandPanel(panel) {
+    if (!panel) {
+      isAnimating = false
+      console.log('🔴 Animation Lock Released (no panel).')
+      return
+    }
+    console.log('팽 ExpandPanel: Starting expand for', panel)
+
+    const panelContent = panel.querySelector('.panel-content')
+    const panelCover = panel.querySelector('.panel-cover')
+
+    // DO NOT remove collapsed class here anymore.
+
+    console.log('팽 ExpandPanel: Creating GSAP timeline...')
+    const timeline = gsap.timeline({
+      onComplete: () => {
+        console.log('🏁 ExpandPanel Overall Timeline COMPLETED for', panel)
+        isAnimating = false // Release lock ONLY after all animations finish
+        console.log('🔴 Animation Lock Released.')
+      },
+    })
+
+    // Animate panel width and overflow using fromTo:
+    timeline.fromTo(
+      panel,
+      { width: '14svw', overflow: 'hidden' }, // Start from collapsed state
+      {
+        width: '60svw', // Animate to expanded width
+        overflow: 'visible', // Animate overflow
+        duration: 0.75,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          // Remove collapsed class ONLY after animation finishes
+          panel.classList.remove('collapsed')
+          console.log(
+            '🏁 ExpandPanel Width Tween COMPLETED: Removed .collapsed from',
+            panel
+          )
+
+          // Update active classes *after* width/overflow animation completes
+          if (panelContent) {
+            panelContent.classList.add('active')
+            console.log('팽 ExpandPanel Content: Added .active')
+          }
+          if (panelCover) {
+            panelCover.classList.remove('active')
+            console.log('팽 ExpandPanel Cover: Removed .active')
+          }
+        },
+      },
+      0 // Start at time 0
+    )
+
+    // Animate panel content using fromTo:
+    if (panelContent) {
+      timeline.fromTo(
+        panelContent,
+        { opacity: 0, scale: 0.7 }, // Start from hidden state
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.75, // Match panel duration
+          ease: 'power2.inOut',
+        },
+        // Add a slight delay (e.g., 0.1s) AFTER the width animation starts
+        // to ensure the container is already expanding visually. Adjust as needed.
+        0.1
+      )
+    }
+    console.log('팽 ExpandPanel: GSAP fromTo timeline initiated.')
+  }
+}
+
+// Export for use in main.js
+export default initServiceSelect

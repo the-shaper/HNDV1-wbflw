@@ -95,9 +95,18 @@ AYW PAGE
 - [x] Programar la funcionalidad de las 3 tabs (craft energy commitment)
 - [x] Programar funcionalidad del Modal
 - [x] Asignar colores (initiation, dreamcaster) a los íconos via js
-- [ ] Crear lógica de visibilidad para los level-bars de cada ícono (grid y modal)
-- [ ] Decidir si add- indicador de "levels" al grid
-- [ ] Construir Layout de "Summary"
-- [ ] Insertar todo el "plan builder" en un formulario.
-- [ ] Construir botones de pricing y next (radio buttons) para energy
-- [ ] ayw-icon-wrapper: tratar de hacer que esté "fixed" in place, encontrar por qué se mueve
+- [x] Crear lógica de visibilidad para los level-bars de cada ícono (grid y modal)
+- [x] Arreglar la lógica de visibilidad de los indicadores de levels en el grid: resting state has white bars
+- [x] Construir botones "plan select" para CRAFT
+- [x] Insertar todo el "plan builder" en un formulario.
+- [x] Construir base botones de pricing y next (radio buttons) para energy
+- [ ] Construir layout de Energy y consultar con Claude si lo hacemos en el mismo snippet o en otro. 
+- [ ] Hacer que el modal se desactive cuando haces click en cualquier parte de la página
+
+AYW SUMMARY
+- [x] Construir Layout de "Summary"
+- [x] Hacer primer prueba de conexión "summary" conectado a button selection
+- [ ] Conectar Icon summary a data-craft
+
+
+

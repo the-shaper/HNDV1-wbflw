@@ -12,6 +12,8 @@ import initAgencyTabs from './features/agency/agencytabs'
 import initCardTabs from './features/agency/cardtabs'
 import initBoardTabs from './features/agency/boardtabs'
 import { initAccordionAYW, initAYWCraftUI } from './features/agency/ayw'
+import initMethod from './features/agency/method'
+import initServiceSelect from './features/agency/serviceselect'
 
 console.log('Welcome to Vite + JS + Webflow!')
 
@@ -27,4 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initBoardTabs()
   initAccordionAYW()
   initAYWCraftUI()
+  initMethod()
+  initServiceSelect()
 })

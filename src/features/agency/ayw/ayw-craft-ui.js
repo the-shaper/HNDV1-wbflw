@@ -9,6 +9,7 @@ function initAYWCraftUI() {
       this.closeButtons = document.querySelectorAll('.close-btn-wrapper')
       this.accordionTabs = document.querySelectorAll('.ayw-accordion-tab')
       this.radioButtons = document.querySelectorAll('.ayw-radiobutt')
+      this.craftSummary = document.querySelector('[data-summary="craft"]')
 
       // Track last clicked icon
       this.lastClickedIcon = null
@@ -316,6 +317,24 @@ function initAYWCraftUI() {
       const clickedRadioInput = clickedButton.querySelector('.w-radio-input')
       if (clickedRadioInput) {
         clickedRadioInput.classList.add('w--redirected-checked')
+      }
+
+      // Get and update the summary text and classes
+      const radioInput = clickedButton.querySelector('input[type="radio"]')
+      if (radioInput && this.craftSummary) {
+        // Update text content
+        this.craftSummary.textContent = radioInput.value
+
+        // Remove both classes first
+        this.craftSummary.classList.remove('init', 'dream')
+
+        // Add appropriate class based on button type
+        const buttonType = clickedButton.getAttribute('data-button')
+        if (buttonType === '1') {
+          this.craftSummary.classList.add('init')
+        } else if (buttonType === '2') {
+          this.craftSummary.classList.add('dream')
+        }
       }
 
       // Update icon states based on selected button

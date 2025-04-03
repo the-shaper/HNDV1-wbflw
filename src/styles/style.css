@@ -103,3 +103,43 @@ body.initial-load .slider-bg_component {
   -webkit-mask: var(--mask);
   mask: var(--mask);
 } */
+
+/* method dial */
+.text-wrapper {
+  display: inline-block;
+  transform-origin: center center;
+}
+
+.method-menu-item.active .text-wrapper {
+  color: #ff3d23;
+}
+
+.method-content {
+  /* The mask */
+  mask-image: radial-gradient(
+    circle,
+    black 55%,
+    /* Opaque center (adjust 70% as needed) */ transparent 66%
+      /* Fade to transparent at the edge */
+  );
+  /* Prefix for Safari/Chrome */
+  -webkit-mask-image: radial-gradient(circle, black 55%, transparent 66%);
+}
+
+.panel-cover {
+  opacity: 0;
+  /* Define the transition for the opacity property */
+  /* Match duration and easing with your GSAP animations if desired */
+  transition: opacity 0.5s ease-in-out;
+  /* Add pointer-events: none; if you don't want the invisible cover */
+  /* to block clicks on the content below when the panel is expanded */
+  pointer-events: none;
+  /* Add any other necessary base styles (position, background, etc.) */
+}
+
+/* Active state (Panel Collapsed) */
+.panel-cover.active {
+  opacity: 1;
+  /* Restore pointer events when the cover is visible */
+  pointer-events: auto;
+}

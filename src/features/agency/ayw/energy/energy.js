@@ -3,25 +3,35 @@ import * as THREE from 'three'
 let scene, camera, renderer
 let particles = []
 let simulationRunning = true
-let container, canvas
 let renderTarget, finalQuad, finalScene, finalCamera
+let metaballMaterial
+let particlePositionsUniform
+let particleSizesUniform
 
-// --- Simulation Parameters ---
-// Default parameters
+// Default simulation parameters
 let defaultParams = {
   particleAmount: 50,
   particleSize: 15.0,
-  particleSpeed: 0.1,
+  particleSpeed: 0.01,
   particleForce: 0.5,
-  particleColorHex: '#FF3d23', // Store as hex string initially
-  backgroundColorHex: '#251818', // Add the '#' prefix
+  particleColorHex: '#FF3d23',
+  backgroundColorHex: '#edf7ee',
   boundaryRadius: 0.4,
   metaballThreshold: 0.6,
-  canvasSize: 800, // Fixed internal canvas size
+  canvasSize: 800,
 }
 
-// Final parameters, potentially overridden by data attributes
+// Active parameters, potentially overridden by data attributes
 let params = { ...defaultParams }
+
+// --- Global Configuration for Initialization ---
+const energySimDefaultConfig = {
+  containerSelector: '#container', // Default for energy.html
+  createCanvas: false, // Default for energy.html (canvas exists)
+}
+
+// Flag to prevent multiple initializations FOR THE SAME CONTAINER
+window.energySimulationContexts = {} // Store initialized containers
 
 // --- Metaball Shader ---
 const vertexShader = `
@@ -76,43 +86,88 @@ const fragmentShader = `
       }
   `
 
-let metaballMaterial
-// Dynamically sized arrays based on particleAmount after reading attributes
-let particlePositionsUniform
-let particleSizesUniform
-
 // --- Initialization ---
-function init() {
-  container = document.getElementById('container')
+// Accepts a configuration object
+function init(config = {}) {
+  // Check if already initialized for this specific container
+  if (window.energySimulationContexts[config.containerSelector]) {
+    console.warn(
+      `Energy simulation already initialized for ${config.containerSelector}. Skipping.`
+    )
+    return
+  }
+
+  // Merge provided config with defaults
+  const currentConfig = { ...energySimDefaultConfig, ...config }
+
+  // Find the container using the selector
+  const container = document.querySelector(currentConfig.containerSelector)
   if (!container) {
-    console.error('Error: Container element #container not found.')
+    // Log error but don't stop script execution entirely, might be called multiple times
+    console.error(
+      `Energy Sim Init Error: Container element "${currentConfig.containerSelector}" not found.`
+    )
     return
   }
-  canvas = document.getElementById('simulationCanvas')
-  if (!canvas) {
-    console.error('Error: Canvas element #simulationCanvas not found.')
-    return
+
+  // Find or create the canvas
+  let canvas
+  if (currentConfig.createCanvas) {
+    // Check if canvas already exists (e.g., from previous failed attempt)
+    canvas = container.querySelector('canvas.energy-simulation-canvas')
+    if (!canvas) {
+      canvas = document.createElement('canvas')
+      canvas.classList.add('energy-simulation-canvas') // Add class for identification
+      container.appendChild(canvas)
+      console.log(`Created canvas inside: ${currentConfig.containerSelector}`)
+    } else {
+      console.log(
+        `Reusing existing canvas in: ${currentConfig.containerSelector}`
+      )
+    }
+  } else {
+    // Try to find an existing canvas within the container first
+    canvas = container.querySelector('canvas')
+    if (!canvas) {
+      // Fallback to the original ID search if not found inside container
+      canvas = document.getElementById('simulationCanvas')
+    }
+    if (!canvas) {
+      console.error(
+        `Energy Sim Init Error: Canvas element not found for ${currentConfig.containerSelector}, and createCanvas is false.`
+      )
+      return
+    }
+    console.log(
+      `Using existing canvas found for: ${currentConfig.containerSelector}`
+    )
   }
 
-  // Read parameters from data attributes
-  readParametersFromDOM()
+  // Read parameters from the *selected* container's data attributes
+  // We store the read parameters globally in `params`
+  let instanceParams = readParametersFromDOM(container)
 
-  // Apply CSS to handle aspect ratio through container
-  setupCanvasCSS()
+  // Apply CSS to the container and the found/created canvas
+  setupCanvasCSS(container, canvas)
 
-  // Initialize dynamic arrays based on actual particleAmount
-  const maxParticles = params.particleAmount // Use the determined amount
+  // Initialize dynamic arrays based on actual particleAmount AFTER reading attributes
+  const maxParticles = instanceParams.particleAmount
+  // REMOVE: const instanceParticlePositions = new Float32Array(maxParticles * 2)
+  // REMOVE: const instanceParticleSizes = new Float32Array(maxParticles)
+  // INSTEAD: Initialize the global arrays
   particlePositionsUniform = new Float32Array(maxParticles * 2)
   particleSizesUniform = new Float32Array(maxParticles)
 
   // Create THREE.Color objects *after* reading potential overrides
-  params.particleColor = new THREE.Color(params.particleColorHex)
-  params.backgroundColor = new THREE.Color(params.backgroundColorHex)
+  const instanceParticleColor = new THREE.Color(instanceParams.particleColorHex)
+  const instanceBackgroundColor = new THREE.Color(
+    instanceParams.backgroundColorHex
+  )
 
-  // Create fixed-size render target
+  // --- Rest of the Three.js setup ---
   renderTarget = new THREE.WebGLRenderTarget(
-    params.canvasSize,
-    params.canvasSize,
+    instanceParams.canvasSize,
+    instanceParams.canvasSize,
     {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -120,11 +175,9 @@ function init() {
     }
   )
 
-  // Main simulation scene (renders to the render target)
   scene = new THREE.Scene()
-  scene.background = params.backgroundColor
+  scene.background = instanceBackgroundColor
 
-  // Camera - always use square aspect ratio (1.0)
   const frustumSize = 1.0
   camera = new THREE.OrthographicCamera(
     frustumSize / -2,
@@ -136,115 +189,125 @@ function init() {
   )
   camera.position.z = 1
 
-  // Set up the final scene to display the render target
   finalScene = new THREE.Scene()
   finalCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
   finalCamera.position.z = 1
 
-  // Renderer - always render at the fixed square size
+  // Use the specific canvas element found/created earlier
   renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true })
-  renderer.setSize(params.canvasSize, params.canvasSize, false)
+  renderer.setSize(instanceParams.canvasSize, instanceParams.canvasSize, false) // Render at fixed internal size
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
-  // Create Particles
-  createParticles()
+  // Create Particles - modify to use global arrays implicitly or pass them
+  // Let's simplify createParticles to just use the globals for now.
+  particles = createParticles(instanceParams) // Remove array arguments
 
-  // Create Metaball Plane
+  // Create Metaball Plane Shader Material
   const finalFragmentShader = fragmentShader.replace(
     /MAX_PARTICLES/g,
-    `${params.particleAmount}`
+    `${instanceParams.particleAmount}` // Use the actual amount read/defaulted
   )
-
   const geometry = new THREE.PlaneGeometry(2, 2)
   metaballMaterial = new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader: finalFragmentShader,
     uniforms: {
       resolution: {
-        value: new THREE.Vector2(params.canvasSize, params.canvasSize),
+        value: new THREE.Vector2(
+          instanceParams.canvasSize,
+          instanceParams.canvasSize
+        ),
       },
-      particleColor: { value: params.particleColor },
-      backgroundColor: { value: params.backgroundColor },
+      particleColor: { value: instanceParticleColor },
+      backgroundColor: { value: instanceBackgroundColor },
+      // Use the GLOBAL arrays for the shader uniform
       particlePositions: { value: particlePositionsUniform },
       particleSizes: { value: particleSizesUniform },
-      particleCount: { value: params.particleAmount },
-      boundaryRadius: { value: params.boundaryRadius },
-      threshold: { value: params.metaballThreshold },
+      particleCount: { value: instanceParams.particleAmount },
+      boundaryRadius: { value: instanceParams.boundaryRadius },
+      threshold: { value: instanceParams.metaballThreshold },
     },
     defines: {
-      MAX_PARTICLES: params.particleAmount,
+      MAX_PARTICLES: instanceParams.particleAmount,
     },
   })
   const quad = new THREE.Mesh(geometry, metaballMaterial)
   scene.add(quad)
 
-  // Fixed resolution for shader
-  metaballMaterial.uniforms.resolution.value.set(
-    params.canvasSize,
-    params.canvasSize
-  )
-
-  // Create a quad to display the render target in the final scene
+  // Final Quad to display render target
   const finalMaterial = new THREE.MeshBasicMaterial({
     map: renderTarget.texture,
   })
   finalQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), finalMaterial)
   finalScene.add(finalQuad)
 
-  // Setup Controls (if they exist)
-  setupControls()
+  // Setup Controls (optional, checks for elements internally)
+  setupControls(instanceParams)
 
-  // Handle Window Resize - only needed for container resizing
-  window.addEventListener('resize', onWindowResize, false)
+  // Handle Window Resize (adjusts CSS container size, renderer size is fixed)
+  window.addEventListener('resize', () => onWindowResize(container), false) // Pass container
 
   // Start Animation Loop
   animate()
+
+  // Mark this container as initialized
+  window.energySimulationContexts[currentConfig.containerSelector] = true
+  console.log(
+    `Energy simulation initialized successfully for: ${currentConfig.containerSelector}`
+  )
 }
 
-// Apply CSS to maintain aspect ratio through the container
-function setupCanvasCSS() {
+// Apply CSS directly to container and canvas
+function setupCanvasCSS(targetContainer, targetCanvas) {
+  if (!targetContainer || !targetCanvas) return
+
   // Make canvas display as block to eliminate inline spacing
-  canvas.style.display = 'block'
+  targetCanvas.style.display = 'block'
 
-  // Make container position relative for absolute positioning
-  container.style.position = 'relative'
+  // Ensure container has relative positioning if not already set
+  // Needed if we were absolutely positioning canvas inside, but less critical now.
+  // Still good practice for containing elements.
+  const currentPosition = window.getComputedStyle(targetContainer).position
+  if (currentPosition === 'static') {
+    targetContainer.style.position = 'relative'
+  }
 
-  // Apply styles to maintain aspect ratio through container size
-  const containerStyle = `
-    aspect-ratio: 1 / 1;
-    max-width: 100%;
-    max-height: 100%;
-    margin: 0 auto;
-    overflow: hidden;
-  `
+  // Apply styles to the container to control aspect ratio and sizing
+  targetContainer.style.aspectRatio = '1 / 1'
+  targetContainer.style.maxWidth = targetContainer.style.maxWidth || '100%' // Respect existing max-width if set
+  targetContainer.style.maxHeight = targetContainer.style.maxHeight || '100%' // Respect existing max-height
+  targetContainer.style.margin = targetContainer.style.margin || '0 auto' // Respect existing margin
+  targetContainer.style.overflow = 'hidden' // Crucial
 
-  // Apply these styles to container or parent element
-  const wrapperDiv = document.createElement('div')
-  wrapperDiv.style.cssText = containerStyle
-
-  // Insert wrapper before canvas in the DOM
-  canvas.parentNode.insertBefore(wrapperDiv, canvas)
-
-  // Move canvas into the wrapper
-  wrapperDiv.appendChild(canvas)
-
-  // Style canvas to fit wrapper properly
-  canvas.style.cssText = `
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  `
+  // Style canvas to fill the container
+  targetCanvas.style.width = '100%'
+  targetCanvas.style.height = '100%'
+  targetCanvas.style.objectFit = 'contain' // Or 'cover'
+  // Remove the old wrapperDiv logic entirely
 }
 
 // --- Read Parameters from DOM ---
-function readParametersFromDOM() {
-  if (!container) return // Should have been checked in init
+// Accept the container element as an argument
+function readParametersFromDOM(targetContainer) {
+  let instanceParams = { ...defaultParams }
 
-  const data = container.dataset // Get all data attributes
+  if (!targetContainer) {
+    console.warn('No container provided to readParametersFromDOM')
+    return instanceParams // Return defaults
+  }
 
-  // Helper to get attribute value or default
+  const data = targetContainer.dataset // Get all data attributes
+
+  // Helper functions remain the same
   const getParam = (key, defaultValue, parser = parseFloat) => {
-    return data[key] !== undefined ? parser(data[key]) : defaultValue
+    // Convert camelCase key (from dataset) to kebab-case (for attribute name)
+    const kebabKey = key.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)
+    // Check dataset first, then fall back to getAttribute for broader compatibility if needed
+    const value =
+      data[key] !== undefined
+        ? data[key]
+        : targetContainer.getAttribute(`data-${kebabKey}`)
+    return value !== null ? parser(value) : defaultValue
   }
   const getIntParam = (key, defaultValue) =>
     getParam(key, defaultValue, parseInt)
@@ -252,61 +315,76 @@ function readParametersFromDOM() {
     getParam(key, defaultValue, String)
 
   // Override default params with values from data attributes if present
-  params.particleAmount = getIntParam(
+  instanceParams.particleAmount = getIntParam(
     'particleAmount',
     defaultParams.particleAmount
   )
-  params.particleSize = getParam('particleSize', defaultParams.particleSize)
-  params.particleSpeed = getParam('particleSpeed', defaultParams.particleSpeed)
-  params.particleForce = getParam('particleForce', defaultParams.particleForce)
-  params.particleColorHex = getStringParam(
+  instanceParams.particleSize = getParam(
+    'particleSize',
+    defaultParams.particleSize
+  )
+  instanceParams.particleSpeed = getParam(
+    'particleSpeed',
+    defaultParams.particleSpeed
+  )
+  instanceParams.particleForce = getParam(
+    'particleForce',
+    defaultParams.particleForce
+  )
+  instanceParams.particleColorHex = getStringParam(
     'particleColor',
     defaultParams.particleColorHex
   )
-  params.backgroundColorHex = getStringParam(
+  instanceParams.backgroundColorHex = getStringParam(
     'backgroundColor',
     defaultParams.backgroundColorHex
   )
-  params.boundaryRadius = getParam(
+  instanceParams.boundaryRadius = getParam(
     'boundaryRadius',
     defaultParams.boundaryRadius
   )
-  params.metaballThreshold = getParam(
+  instanceParams.metaballThreshold = getParam(
     'metaballThreshold',
     defaultParams.metaballThreshold
   )
 
-  // --- Important Validation ---
-  // Ensure particleAmount is reasonable if read from DOM, prevent shader issues
-  params.particleAmount = Math.max(1, Math.min(params.particleAmount, 1000)) // Example: Clamp between 1 and 1000
+  // Validation
+  instanceParams.particleAmount = Math.max(
+    1,
+    Math.min(instanceParams.particleAmount, 1000)
+  )
 
-  // Log the final parameters being used
-  console.log('Using simulation parameters:', params)
+  console.log(
+    `Parameters read from [${targetContainer.tagName}${
+      targetContainer.id ? '#' + targetContainer.id : ''
+    }${
+      targetContainer.className
+        ? '.' + targetContainer.className.split(' ').join('.')
+        : ''
+    }]:`,
+    instanceParams
+  )
+  return instanceParams // Return the specific params for this container
 }
 
 // --- Particle Creation ---
-function createParticles() {
-  particles = [] // Clear existing particles
-  const boundary = params.boundaryRadius * 0.95
-  const maxParticles = params.particleAmount // Use the determined amount
+// Modify to remove array parameters and use globals
+function createParticles(currentParams) {
+  let instanceParticles = [] // Keep this local for particle data
+  const boundary = currentParams.boundaryRadius * 0.95
+  const maxParticles = currentParams.particleAmount
 
-  // Resize uniform arrays if necessary (e.g., if amount changed via controls)
-  if (particlePositionsUniform.length / 2 !== maxParticles) {
-    particlePositionsUniform = new Float32Array(maxParticles * 2)
-    particleSizesUniform = new Float32Array(maxParticles)
-    if (metaballMaterial) {
-      // Update shader uniforms if material exists
-      metaballMaterial.uniforms.particlePositions.value =
-        particlePositionsUniform
-      metaballMaterial.uniforms.particleSizes.value = particleSizesUniform
-      // IMPORTANT: Also update the shader definition if MAX_PARTICLES changes
-      // This requires recompiling the shader, which is complex.
-      // For simplicity now, we assume particleAmount set via data-attribute is fixed.
-      // If controls change particleAmount, we might need to recreate the material.
-      console.warn(
-        'Dynamically changing particleAmount via controls after init is not fully supported without shader recompilation. Initial data-attribute value is used for shader limits.'
-      )
-    }
+  // Check if global arrays are sized correctly (they should be from init)
+  if (
+    !particlePositionsUniform ||
+    particlePositionsUniform.length / 2 !== maxParticles ||
+    !particleSizesUniform ||
+    particleSizesUniform.length !== maxParticles
+  ) {
+    console.error(
+      'Global uniform arrays not initialized correctly before createParticles!'
+    )
+    return [] // Return empty to prevent further errors
   }
 
   for (let i = 0; i < maxParticles; i++) {
@@ -317,37 +395,39 @@ function createParticles() {
       Math.sin(angle) * radius
     )
     const velocity = new THREE.Vector2(
-      (Math.random() - 0.5) * 0.005,
-      (Math.random() - 0.5) * 0.005
+      (Math.random() - 0.5) * 0.0005,
+      (Math.random() - 0.5) * 0.0005
     )
 
-    particles.push({
+    instanceParticles.push({
       position: position,
       velocity: velocity,
-      size: params.particleSize,
+      size: currentParams.particleSize,
     })
 
+    // Initialize the GLOBAL uniform arrays directly
     particlePositionsUniform[i * 2] = position.x
     particlePositionsUniform[i * 2 + 1] = position.y
-    particleSizesUniform[i] = particles[i].size
+    particleSizesUniform[i] = instanceParticles[i].size
   }
 
+  // Update uniforms IF the material exists
   if (metaballMaterial) {
     metaballMaterial.uniforms.particleCount.value = maxParticles
+    // The uniforms already point to the global arrays, just need to mark for update
     metaballMaterial.uniforms.particlePositions.needsUpdate = true
     metaballMaterial.uniforms.particleSizes.needsUpdate = true
   }
+  return instanceParticles // Return the simulation particle data
 }
 
 // --- Control Setup ---
-function setupControls() {
+function setupControls(currentParams) {
   // Check if controls container exists - makes controls optional
   const controlsContainer = document.getElementById('controls')
   if (!controlsContainer) {
-    console.log('Controls container #controls not found. Skipping setup.')
-    // Hide or disable the container logic if not found in Webflow
-    if (container) container.style.paddingLeft = '0px' // Example adjustment
-    return
+    // console.log('Controls container #controls not found. Skipping setup.') // Optional: uncomment for debugging
+    return // Exit function cleanly if controls don't exist
   }
 
   const particleAmountSlider = document.getElementById('particleAmount')
@@ -378,42 +458,44 @@ function setupControls() {
     if (picker) picker.value = colorHex
   }
 
-  // Set initial values from potentially overridden params
+  // Set initial values from the PASSED params for this instance
   setupControl(
     particleAmountSlider,
     particleAmountValue,
-    params.particleAmount,
+    currentParams.particleAmount,
     (v) => v.toString()
   )
   setupControl(
     particleSizeSlider,
     particleSizeValue,
-    params.particleSize,
+    currentParams.particleSize,
     (v) => v.toFixed(1)
   )
   setupControl(
     particleSpeedSlider,
     particleSpeedValue,
-    params.particleSpeed,
+    currentParams.particleSpeed,
     (v) => v.toFixed(2)
   )
   setupControl(
     particleForceSlider,
     particleForceValue,
-    params.particleForce,
+    currentParams.particleForce,
     (v) => v.toFixed(1)
   )
-  setupColorControl(particleColorPicker, params.particleColorHex)
-  setupColorControl(backgroundColorPicker, params.backgroundColorHex)
+  setupColorControl(particleColorPicker, currentParams.particleColorHex)
+  setupColorControl(backgroundColorPicker, currentParams.backgroundColorHex)
 
-  // Add event listeners only if elements exist
+  // Event listeners will now call the global updateEnergySimulation
+  // This means controls ONLY affect the LAST initialized simulation if multiple exist.
+  // This needs refactoring if independent control of multiple instances is needed.
   if (particleAmountSlider) {
     particleAmountSlider.addEventListener('input', (e) => {
       const newAmount = parseInt(e.target.value)
       // Note: Changing amount after init with controls is tricky due to shader limits.
       // For now, we update the value display but don't recreate particles/shader.
       // Consider disabling this control or implementing full shader recompilation if needed.
-      params.particleAmount = newAmount // Update param for reference if needed elsewhere
+      currentParams.particleAmount = newAmount // Update param for reference if needed elsewhere
       if (particleAmountValue) particleAmountValue.textContent = newAmount
       console.warn(
         'Changing particle amount via controls is limited. Reload page with new data-particle-amount for changes to take full effect.'
@@ -424,14 +506,14 @@ function setupControls() {
 
   if (particleSizeSlider) {
     particleSizeSlider.addEventListener('input', (e) => {
-      params.particleSize = parseFloat(e.target.value)
+      currentParams.particleSize = parseFloat(e.target.value)
       if (particleSizeValue)
-        particleSizeValue.textContent = params.particleSize.toFixed(1)
+        particleSizeValue.textContent = currentParams.particleSize.toFixed(1)
       // Update existing particle sizes and uniform array
       particles.forEach((p, i) => {
         if (i < metaballMaterial.uniforms.particleCount.value) {
           // Use the actual count in the shader
-          p.size = params.particleSize
+          p.size = currentParams.particleSize
           particleSizesUniform[i] = p.size
         }
       })
@@ -443,37 +525,39 @@ function setupControls() {
 
   if (particleSpeedSlider) {
     particleSpeedSlider.addEventListener('input', (e) => {
-      params.particleSpeed = parseFloat(e.target.value)
+      currentParams.particleSpeed = parseFloat(e.target.value)
       if (particleSpeedValue)
-        particleSpeedValue.textContent = params.particleSpeed.toFixed(2)
+        particleSpeedValue.textContent = currentParams.particleSpeed.toFixed(2)
     })
   }
 
   if (particleForceSlider) {
     particleForceSlider.addEventListener('input', (e) => {
-      params.particleForce = parseFloat(e.target.value)
+      currentParams.particleForce = parseFloat(e.target.value)
       if (particleForceValue)
-        particleForceValue.textContent = params.particleForce.toFixed(1)
+        particleForceValue.textContent = currentParams.particleForce.toFixed(1)
     })
   }
 
   if (particleColorPicker) {
     particleColorPicker.addEventListener('input', (e) => {
-      params.particleColorHex = e.target.value // Store hex
-      params.particleColor.set(params.particleColorHex) // Update THREE.Color
+      currentParams.particleColorHex = e.target.value // Store hex
+      currentParams.particleColor.set(currentParams.particleColorHex) // Update THREE.Color
       if (metaballMaterial) {
-        metaballMaterial.uniforms.particleColor.value = params.particleColor
+        metaballMaterial.uniforms.particleColor.value =
+          currentParams.particleColor
       }
     })
   }
 
   if (backgroundColorPicker) {
     backgroundColorPicker.addEventListener('input', (e) => {
-      params.backgroundColorHex = e.target.value // Store hex
-      params.backgroundColor.set(params.backgroundColorHex) // Update THREE.Color
-      if (scene) scene.background = params.backgroundColor
+      currentParams.backgroundColorHex = e.target.value // Store hex
+      currentParams.backgroundColor.set(currentParams.backgroundColorHex) // Update THREE.Color
+      if (scene) scene.background = currentParams.backgroundColor
       if (metaballMaterial) {
-        metaballMaterial.uniforms.backgroundColor.value = params.backgroundColor
+        metaballMaterial.uniforms.backgroundColor.value =
+          currentParams.backgroundColor
       }
     })
   }
@@ -489,18 +573,28 @@ function setupControls() {
 
 // --- Update Simulation ---
 function updateParticles(deltaTime) {
+  // ... forceFactor, speedFactor etc ...
+  // This check should prevent the error if init failed somehow, but the root cause was the uninitialized global array
+  if (!particlePositionsUniform || !particles || !metaballMaterial) {
+    console.warn('updateParticles called before simulation fully initialized.')
+    return
+  }
+
   const forceFactor = params.particleForce * 0.0001
   const speedFactor = params.particleSpeed * deltaTime * 30
   const boundary = params.boundaryRadius
   const boundarySq = boundary * boundary
   const damping = 0.985
-  const particleCount = metaballMaterial.uniforms.particleCount.value // Use actual shader count
+  const particleCount = metaballMaterial.uniforms.particleCount.value
 
   for (let i = 0; i < particleCount; i++) {
+    // Add checks for p1 if needed, though particleCount should be reliable
+    if (!particles[i]) continue
     const p1 = particles[i]
 
-    // Apply forces
+    // Apply forces (check p2 as well)
     for (let j = i + 1; j < particleCount; j++) {
+      if (!particles[j]) continue
       const p2 = particles[j]
       const delta = p2.position.clone().sub(p1.position)
       const distSq = delta.lengthSq()
@@ -529,7 +623,8 @@ function updateParticles(deltaTime) {
       p1.position.normalize().multiplyScalar(boundary)
     }
 
-    // Update uniform array
+    // Update uniform array (This is the line that caused the error)
+    // Should now work as particlePositionsUniform is initialized globally in init
     particlePositionsUniform[i * 2] = p1.position.x
     particlePositionsUniform[i * 2 + 1] = p1.position.y
   }
@@ -541,9 +636,13 @@ function updateParticles(deltaTime) {
 }
 
 // --- Window Resize ---
-function onWindowResize() {
-  // No need to adjust renderer or camera since we're using CSS for aspect ratio
-  // and fixed canvas size. Just update container if needed.
+// Accept container, but current logic might be fine as it relies on CSS
+function onWindowResize(targetContainer) {
+  // Renderer size is fixed (params.canvasSize)
+  // Camera aspect is fixed (1.0)
+  // The CSS applied in setupCanvasCSS handles the container/canvas scaling.
+  // No specific adjustments needed here unless complex layout changes occur.
+  // console.log("Window resized, container:", targetContainer);
 }
 
 // --- Animation Loop ---
@@ -567,14 +666,193 @@ function animate() {
   }
 }
 
-// --- Start ---
-// Don't auto-start here. We'll call init from the HTML script tag
-// to ensure the DOM is ready.
-// init();
+// --- Global Initialization Function (Assign to window) ---
+// This allows manual initialization if needed.
+window.initializeEnergySimulation = function (config = {}) {
+  init(config)
+}
 
-// Export init function if needed for more control later,
-// but for simple loading, just calling it below is fine.
-// export { init };
+// --- External API (Assign to window) ---
+// NOTE: This API will affect the LAST initialized instance due to reliance on global variables like `metaballMaterial`, `scene`, `params`.
+window.updateEnergySimulation = function (newParams) {
+  if (!metaballMaterial || !scene) {
+    console.warn('Simulation components not ready for update.')
+    return
+  }
+  if (typeof newParams !== 'object' || newParams === null) {
+    console.warn('updateEnergySimulation expects an object of parameters.')
+    return
+  }
 
-// Auto-initialize when the script is loaded as a module
-init()
+  console.log('Attempting to update simulation with:', newParams)
+
+  let needsUniformUpdate = false // Flag if any shader uniform needs needsUpdate = true
+  let needsSceneUpdate = false // Flag if scene background changes
+
+  // Update specific parameters based on what's provided in newParams
+  if (newParams.particleColorHex !== undefined) {
+    params.particleColorHex = newParams.particleColorHex
+    params.particleColor.set(params.particleColorHex) // Update the THREE.Color object
+    metaballMaterial.uniforms.particleColor.value = params.particleColor // Uniform already points to the THREE.Color object
+    needsUniformUpdate = true // Although the object reference is the same, the color value changed. Let's keep it clean.
+    console.log('Updated particle color to:', params.particleColorHex)
+  }
+
+  if (newParams.backgroundColorHex !== undefined) {
+    params.backgroundColorHex = newParams.backgroundColorHex
+    params.backgroundColor.set(params.backgroundColorHex) // Update the THREE.Color object
+    scene.background = params.backgroundColor // Update scene background directly
+    metaballMaterial.uniforms.backgroundColor.value = params.backgroundColor // Update shader uniform
+    needsSceneUpdate = true // Scene background changed
+    needsUniformUpdate = true // Shader uniform changed
+    console.log('Updated background color to:', params.backgroundColorHex)
+  }
+
+  if (newParams.particleSpeed !== undefined) {
+    const speed = parseFloat(newParams.particleSpeed)
+    if (!isNaN(speed)) {
+      params.particleSpeed = speed
+      console.log('Updated particle speed to:', params.particleSpeed)
+      // Update corresponding control display if it exists
+      const control = document.getElementById('particleSpeed')
+      const display = document.getElementById('particleSpeedValue')
+      if (control) control.value = params.particleSpeed
+      if (display) display.textContent = params.particleSpeed.toFixed(2)
+    } else {
+      console.warn('Invalid particleSpeed value:', newParams.particleSpeed)
+    }
+  }
+
+  if (newParams.particleForce !== undefined) {
+    const force = parseFloat(newParams.particleForce)
+    if (!isNaN(force)) {
+      params.particleForce = force
+      console.log('Updated particle force to:', params.particleForce)
+      // Update corresponding control display if it exists
+      const control = document.getElementById('particleForce')
+      const display = document.getElementById('particleForceValue')
+      if (control) control.value = params.particleForce
+      if (display) display.textContent = params.particleForce.toFixed(1)
+    } else {
+      console.warn('Invalid particleForce value:', newParams.particleForce)
+    }
+  }
+
+  if (newParams.particleSize !== undefined) {
+    const newSize = parseFloat(newParams.particleSize)
+    if (!isNaN(newSize) && newSize > 0) {
+      params.particleSize = newSize
+      // Update existing particle sizes and uniform array
+      const currentParticleCount = metaballMaterial.uniforms.particleCount.value
+      particles.forEach((p, i) => {
+        if (i < currentParticleCount) {
+          p.size = params.particleSize
+          particleSizesUniform[i] = p.size // Update the uniform array directly
+        }
+      })
+      metaballMaterial.uniforms.particleSizes.needsUpdate = true // Tell THREE to update this uniform
+      needsUniformUpdate = true
+      console.log('Updated particle size to:', params.particleSize)
+      // Update corresponding control display if it exists
+      const control = document.getElementById('particleSize')
+      const display = document.getElementById('particleSizeValue')
+      if (control) control.value = params.particleSize
+      if (display) display.textContent = params.particleSize.toFixed(1)
+    } else {
+      console.warn('Invalid particleSize value:', newParams.particleSize)
+    }
+  }
+
+  // Example for updating threshold
+  if (newParams.metaballThreshold !== undefined) {
+    const threshold = parseFloat(newParams.metaballThreshold)
+    if (!isNaN(threshold)) {
+      params.metaballThreshold = threshold
+      metaballMaterial.uniforms.threshold.value = params.metaballThreshold
+      needsUniformUpdate = true
+      console.log('Updated metaball threshold to:', params.metaballThreshold)
+      // Add control update if a slider for threshold exists
+    } else {
+      console.warn(
+        'Invalid metaballThreshold value:',
+        newParams.metaballThreshold
+      )
+    }
+  }
+
+  // Example for updating boundaryRadius
+  if (newParams.boundaryRadius !== undefined) {
+    const radius = parseFloat(newParams.boundaryRadius)
+    if (!isNaN(radius) && radius > 0) {
+      params.boundaryRadius = radius
+      metaballMaterial.uniforms.boundaryRadius.value = params.boundaryRadius
+      needsUniformUpdate = true
+      console.log('Updated boundary radius to:', params.boundaryRadius)
+      // Add control update if a slider for boundaryRadius exists
+      // Note: This only affects the *shader's* boundary check, not the particle physics boundary.
+      // Updating the physics boundary dynamically would require more logic in updateParticles.
+    } else {
+      console.warn('Invalid boundaryRadius value:', newParams.boundaryRadius)
+    }
+  }
+
+  // IMPORTANT: Changing particleAmount via this API is NOT supported
+  if (newParams.particleAmount !== undefined) {
+    console.warn(
+      "Dynamically changing 'particleAmount' after initialization is not supported due to shader limitations. Please re-initialize with a new configuration if needed."
+    )
+  }
+
+  // Note: needsUpdate flags aren't strictly necessary if the animate loop is always running,
+  // but they don't hurt and can be useful if you add logic to pause rendering.
+  if (needsUniformUpdate || needsSceneUpdate) {
+    console.log('Applied updates.')
+    // The animation loop will pick up the changes. No explicit re-render needed here unless debugging.
+  } else if (Object.keys(newParams).length > 0) {
+    // Log if parameters were updated that don't require immediate uniform/scene changes (like speed/force)
+    console.log('Applied non-visual parameter updates (e.g., speed, force).')
+  } else {
+    console.log('No valid parameters found to update.')
+  }
+}
+
+// --- Initialization Logic ---
+// Runs when the script/module is loaded.
+function initializeSimulations() {
+  // 1. Attempt initialization for the testbed (energy.html)
+  const testContainer = document.getElementById('container')
+  const testCanvas = document.getElementById('simulationCanvas')
+  if (testContainer && testCanvas) {
+    console.log('Attempting initialization for HTML testbed (#container)')
+    init({
+      containerSelector: '#container',
+      createCanvas: false,
+    })
+  }
+
+  // 2. Attempt initialization for Webflow container(s)
+  // Use querySelectorAll in case multiple exist, though current code only handles one well.
+  const webflowContainers = document.querySelectorAll('.energy-container')
+  if (webflowContainers.length > 0) {
+    console.log(
+      `Found ${webflowContainers.length} Webflow container(s) (.energy-container). Attempting initialization...`
+    )
+    webflowContainers.forEach((container) => {
+      // We need a unique selector if there are multiple. Using ID is best.
+      // For now, use the class selector but be aware only the last init will "stick" with current globals.
+      const selector = '.energy-container' // This isn't ideal for multiple
+      init({
+        containerSelector: selector, // Problematic if multiple divs have this class
+        createCanvas: true,
+      })
+    })
+  }
+}
+
+// --- Execute Initialization ---
+// Use DOMContentLoaded to ensure elements exist
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeSimulations)
+} else {
+  initializeSimulations() // DOM already ready
+}

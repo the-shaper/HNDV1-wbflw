@@ -14,6 +14,7 @@ import initBoardTabs from './features/agency/boardtabs'
 import { initAccordionAYW, initAYWCraftUI } from './features/agency/ayw'
 import initMethod from './features/agency/method'
 import initServiceSelect from './features/agency/serviceselect'
+import './features/agency/ayw/energy/energy.js' // Just import the file to execute it
 
 console.log('Welcome to Vite + JS + Webflow!')
 

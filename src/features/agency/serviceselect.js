@@ -1,4 +1,13 @@
 function initServiceSelect() {
+  // --- Configuration ---
+  const config = {
+    triggerEvent: 'mouseover', // 'click' or 'mouseover'
+    animationSpeed: 0.44, // Duration in seconds (e.g., 0.75)
+    easingType: 'expo.inOut', // GSAP easing string (e.g., 'power2.inOut', 'expo.inOut')
+    useAnimationLock: true, // Add this line: true = block events during animation, false = allow
+  }
+  console.log('⚙️ Accordion Config:', config) // Log the config being used
+
   const panels = document.querySelectorAll('.accordion-panel')
   // Add animation lock flag
   let isAnimating = false
@@ -13,25 +22,28 @@ function initServiceSelect() {
   // Set initial collapsed panel sizes using GSAP
   setupInitialState()
 
-  // Add click event to all panels
+  // Add event listener based on config
   panels.forEach((panel, index) => {
-    panel.addEventListener('click', () => {
-      console.log(`🖱️ Panel ${index} clicked.`)
-      // Don't do anything if animation is in progress or if clicked panel is already expanded
-      if (isAnimating) {
-        console.log(' L O C K E D: Animation in progress, click ignored.')
-        return
-      }
-      if (!panel.classList.contains('collapsed')) {
+    panel.addEventListener(config.triggerEvent, () => {
+      // Log based on the actual trigger event being used
+      console.log(`🖱️ Panel ${index} triggered via ${config.triggerEvent}.`)
+      // Don't do anything if animation is in progress (and lock is enabled) or if triggered panel is already expanded
+      if (config.useAnimationLock && isAnimating) {
         console.log(
-          ' L O C K E D: Clicked panel is already expanded, click ignored.'
+          ` L O C K E D: Animation in progress, ${config.triggerEvent} ignored.`
         )
         return
       }
+      if (!panel.classList.contains('collapsed')) {
+        // console.log(` L O C K E D: Triggered panel is already expanded, ${config.triggerEvent} ignored.`);
+        return
+      }
 
-      // Set animation lock
-      console.log('🟢 Animation Lock Engaged.')
-      isAnimating = true
+      // Set animation lock if enabled
+      if (config.useAnimationLock) {
+        console.log('🟢 Animation Lock Engaged.')
+        isAnimating = true
+      }
 
       // Find the currently expanded panel
       const expandedPanel = document.querySelector(
@@ -43,10 +55,13 @@ function initServiceSelect() {
       console.log('🎬 Starting collapse process for:', expandedPanel)
       collapsePanel(expandedPanel)
 
-      // Expand the clicked panel
+      // Expand the triggered panel
       console.log(`🎬 Starting expand process for Panel ${index}:`, panel)
       expandPanel(panel)
     })
+
+    // NOTE: If config.triggerEvent is 'mouseover', the note about
+    // no automatic 'mouseout' collapse still applies.
   })
 
   // Function to set up initial state - reworked for Collection List
@@ -124,9 +139,12 @@ function initServiceSelect() {
   function collapsePanel(panel) {
     if (!panel) {
       console.log('💨 CollapsePanel: No panel provided, skipping.')
+      // If no panel is expanded after this attempt, potentially release the lock
       if (!document.querySelector('.accordion-panel:not(.collapsed)')) {
-        isAnimating = false
-        console.log('🔴 Animation Lock Released (no panel to collapse).')
+        if (config.useAnimationLock) {
+          isAnimating = false
+          console.log('🔴 Animation Lock Released (no panel to collapse).')
+        }
       }
       return
     }
@@ -154,8 +172,8 @@ function initServiceSelect() {
       {
         width: '14svw', // Animate to collapsed width
         overflow: 'hidden', // Animate overflow
-        duration: 0.75,
-        ease: 'power2.inOut',
+        duration: config.animationSpeed, // Use config.animationSpeed
+        ease: config.easingType, // Use config.easingType
         onComplete: () => {
           panel.classList.add('collapsed') // Add class AFTER animation
           console.log('🏁 CollapsePanel COMPLETED: Added .collapsed to', panel)
@@ -172,8 +190,8 @@ function initServiceSelect() {
         {
           opacity: 0,
           scale: 0.7,
-          duration: 0.75, // Match panel duration
-          ease: 'power2.inOut',
+          duration: config.animationSpeed, // Use config.animationSpeed
+          ease: config.easingType, // Use config.easingType
         },
         0
       )
@@ -184,8 +202,10 @@ function initServiceSelect() {
   // Function to expand a panel with animation
   function expandPanel(panel) {
     if (!panel) {
-      isAnimating = false
-      console.log('🔴 Animation Lock Released (no panel).')
+      if (config.useAnimationLock) {
+        isAnimating = false
+        console.log('🔴 Animation Lock Released (no panel).')
+      }
       return
     }
     console.log('팽 ExpandPanel: Starting expand for', panel)
@@ -193,14 +213,14 @@ function initServiceSelect() {
     const panelContent = panel.querySelector('.panel-content')
     const panelCover = panel.querySelector('.panel-cover')
 
-    // DO NOT remove collapsed class here anymore.
-
     console.log('팽 ExpandPanel: Creating GSAP timeline...')
     const timeline = gsap.timeline({
       onComplete: () => {
         console.log('🏁 ExpandPanel Overall Timeline COMPLETED for', panel)
-        isAnimating = false // Release lock ONLY after all animations finish
-        console.log('🔴 Animation Lock Released.')
+        if (config.useAnimationLock) {
+          isAnimating = false // Release lock ONLY after all animations finish if enabled
+          console.log('🔴 Animation Lock Released.')
+        }
       },
     })
 
@@ -211,8 +231,8 @@ function initServiceSelect() {
       {
         width: '60svw', // Animate to expanded width
         overflow: 'visible', // Animate overflow
-        duration: 0.75,
-        ease: 'power2.inOut',
+        duration: config.animationSpeed, // Use config.animationSpeed
+        ease: config.easingType, // Use config.easingType
         onComplete: () => {
           // Remove collapsed class ONLY after animation finishes
           panel.classList.remove('collapsed')
@@ -243,12 +263,12 @@ function initServiceSelect() {
         {
           opacity: 1,
           scale: 1,
-          duration: 0.75, // Match panel duration
-          ease: 'power2.inOut',
+          duration: config.animationSpeed, // Use config.animationSpeed
+          ease: config.easingType, // Use config.easingType
         },
-        // Add a slight delay (e.g., 0.1s) AFTER the width animation starts
-        // to ensure the container is already expanding visually. Adjust as needed.
-        0.1
+        // Add a slight delay AFTER the width animation starts
+        // Use a fraction of the animation speed for scalability, e.g., speed / 7.5
+        config.animationSpeed / 7.5 // Adjusted delay based on speed
       )
     }
     console.log('팽 ExpandPanel: GSAP fromTo timeline initiated.')

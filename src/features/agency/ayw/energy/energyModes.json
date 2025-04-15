@@ -1,0 +1,22 @@
+{
+  "A": {
+    "particleAmount": 22,
+    "particleSize": 69.5,
+    "particleSpeed": 0.01,
+    "particleForce": 0.33,
+    "particleColorHex": "#ff3d23",
+    "backgroundColorHex": "#edf7ee",
+    "boundaryRadius": 0.4,
+    "metaballThreshold": 0.6
+  },
+  "B": {
+    "particleAmount": 69,
+    "particleSize": 24.5,
+    "particleSpeed": 0.03,
+    "particleForce": 0.69,
+    "particleColorHex": "#246dff",
+    "backgroundColorHex": "#edf7ee",
+    "boundaryRadius": 0.5,
+    "metaballThreshold": 0.6
+  }
+}

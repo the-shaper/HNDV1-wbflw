@@ -44,7 +44,8 @@ canvas {
   border-left: 1px solid #e0e0e0;
 }
 
-#controls label {
+#controls label,
+#controls .control-label {
   display: block;
   margin-bottom: 5px;
   font-weight: 500;
@@ -65,6 +66,28 @@ canvas {
   border-radius: 4px;
 }
 
+/* Styles for Radio Buttons */
+.radio-group {
+  margin-bottom: 15px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.radio-option input[type='radio'] {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.radio-option label {
+  margin-bottom: 0;
+  font-weight: normal;
+  cursor: pointer;
+}
+
 #controls button {
   background-color: #4a90e2;
   color: white;
@@ -74,6 +97,18 @@ canvas {
   cursor: pointer;
   font-weight: 500;
   transition: background-color 0.3s ease;
+  margin-bottom: 5px;
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.mode-controls button {
+  margin-bottom: 5px;
+}
+
+.mode-controls button:last-child {
+  margin-bottom: 0;
 }
 
 #controls button:hover {
@@ -115,4 +150,74 @@ input[type='range']::-moz-range-thumb {
   border-radius: 50%;
   cursor: pointer;
   border: none;
+}
+
+/* Added helper classes from HTML */
+.mb-3 {
+  margin-bottom: 0.75rem;
+}
+.mb-4 {
+  margin-bottom: 1rem;
+}
+.text-lg {
+  font-size: 1.125rem;
+}
+.font-semibold {
+  font-weight: 600;
+}
+.text-gray-700 {
+  color: #4a5568;
+}
+.text-md {
+  font-size: 1rem;
+}
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+.text-gray-600 {
+  color: #718096;
+}
+.text-xs {
+  font-size: 0.75rem;
+}
+.text-gray-500 {
+  color: #a0aec0;
+}
+.mt-1 {
+  margin-top: 0.25rem;
+}
+.mt-2 {
+  margin-top: 0.5rem;
+}
+.my-4 {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+.border-gray-300 {
+  border-color: #e2e8f0;
+}
+hr {
+  border-top-width: 1px;
+}
+
+/* Control Set Visibility */
+.controls-set {
+  margin-top: 1rem; /* Add some space between groups */
+  /* Add transition for smoother hiding/showing if desired */
+  /* transition: opacity 0.3s ease, max-height 0.3s ease; */
+  /* overflow: hidden; */
+}
+
+.controls-hidden {
+  display: none;
+  /* For transition: */
+  /* opacity: 0; */
+  /* max-height: 0; */
+}
+
+.controls-visible {
+  display: block;
+  /* For transition: */
+  /* opacity: 1; */
+  /* max-height: 1000px; /* Adjust as needed */
 }

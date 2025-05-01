@@ -5,6 +5,7 @@ import initPortfolio from './features/portfolio/portfolio'
 import initPortfolioScroll from './features/portfolio/portfolioscroll'
 import initGalleryTabs from './features/portfolio/gallerytabs'
 import initCategoriesMenu from './features/portfolio/categories-menu'
+import initDashboardController from './features/agency/ayw/dashboard-controller'
 
 // Agency
 import initShowcase from './features/agency/showcase'
@@ -32,4 +33,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initAYWCraftUI()
   initMethod()
   initServiceSelect()
+  initDashboardController()
 })

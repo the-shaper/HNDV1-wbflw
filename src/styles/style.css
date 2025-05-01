@@ -143,3 +143,23 @@ body.initial-load .slider-bg_component {
   /* Restore pointer events when the cover is visible */
   pointer-events: auto;
 }
+
+/* The parent container of the config button wrappers */
+.config-buttons-container {
+  /* Replace with your actual selector */
+  perspective: 1000px; /* Adjust value as needed */
+}
+
+/* The config button wrappers themselves */
+.ayw-config-butts-wrapper {
+  /* This targets all wrappers by class */
+  backface-visibility: hidden;
+  /* Ensure display is handled by JS initially,
+     but you might have other base styles */
+  /* display: none; */ /* JS now controls display */
+
+  /* Define the default 'active' state display if not already done */
+  &.is-active {
+    /* display: block; */ /* JS now controls display */
+  }
+}

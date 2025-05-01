@@ -10,21 +10,25 @@ let renderTarget, finalQuad, finalScene, finalCamera
 let metaballMaterial
 let particlePositionsUniform
 let particleSizesUniform
+let metaballQuad
 
 // --- Maximum Particles Constant ---
 const MAX_PARTICLES = 333 // Define the pre-allocated maximum
 
-// Default simulation parameters (used as a fallback)
+// Default simulation parameters (Add new liquid params)
 let defaultParams = {
+  simulationType: 'metaball',
   particleAmount: 111,
   particleSize: 25.0,
   particleSpeed: 0.01,
-  particleForce: 0.5,
   particleColorHex: '#FF3d23',
   backgroundColorHex: '#edf7ee',
   boundaryRadius: 0.44,
-  metaballThreshold: 0.6,
   canvasSize: 800,
+  canvasScale: 1.0, // Default scale of 100%
+  // --- Type Specific ---
+  particleForce: 0.5,
+  metaballThreshold: 0.6,
 }
 
 // Active parameters for the *currently controlled/previewed* instance (e.g., on energy.html)
@@ -46,19 +50,25 @@ window.energySimulationContexts = {} // Store initialized containers
 // --- Load Modes Function (Simplified and Synchronous) ---
 function loadModes() {
   try {
-    // Directly use the imported data
     savedModes = modesDataFromFile
     console.log('Successfully loaded modes from import:', savedModes)
-
-    // Ensure A and B exist, applying defaults if the imported JSON lacks them
-    if (!savedModes.A) {
-      console.warn('Mode A missing in energyModes.json, using defaults.')
-      savedModes.A = { ...defaultParams }
+    const ensureModeDefaults = (modeKey) => {
+      if (!savedModes[modeKey]) {
+        savedModes[modeKey] = { ...defaultParams }
+        return
+      }
+      for (const key in defaultParams) {
+        if (savedModes[modeKey][key] === undefined) {
+          savedModes[modeKey][key] = defaultParams[key]
+        }
+      }
+      const currentType = savedModes[modeKey].simulationType
+      if (!['metaball', 'liquid repel'].includes(currentType)) {
+        savedModes[modeKey].simulationType = defaultParams.simulationType
+      }
     }
-    if (!savedModes.B) {
-      console.warn('Mode B missing in energyModes.json, using defaults.')
-      savedModes.B = { ...defaultParams }
-    }
+    ensureModeDefaults('A')
+    ensureModeDefaults('B')
   } catch (error) {
     // This catch block is less likely to be hit for basic import issues,
     // but good practice to keep for potential JSON parsing errors if file is malformed.
@@ -93,17 +103,30 @@ const fragmentShader = `
       uniform int particleCount; // Uniform to control the actual number used
       uniform float boundaryRadius;
       uniform float threshold;
+      uniform float canvasScale; // Add this new uniform
 
       varying vec2 vUv;
 
       void main() {
           vec2 center = vec2(0.5);
-          vec2 uv = gl_FragCoord.xy / resolution.xy; // Use screen coordinates
-
-          // Calculate distance from center for boundary
-          float distFromCenter = distance(uv, center);
+          vec2 uv = gl_FragCoord.xy / resolution.xy; // Screen coordinates
+          
+          // Apply scaling: Transform UV to be centered and scaled
+          vec2 scaledUV = (uv - center) / canvasScale + center;
+          
+          // Check if scaled coordinates are outside the canvas (0-1 range)
+          if(scaledUV.x < 0.0 || scaledUV.x > 1.0 || scaledUV.y < 0.0 || scaledUV.y > 1.0) {
+              gl_FragColor = vec4(backgroundColor, 1.0);
+              return;
+          }
+          
+          // Calculate distance from center for boundary using scaled UV
+          float distFromCenter = distance(scaledUV, center);
 
           // Discard fragments outside the circular boundary visually
+          // Note: This visual clipping might need adjustment for the 'liquid' mode if particles
+          // settle below the 0.5 center but are still within the intended play area.
+          // However, the actual physics boundary is handled in JS.
           if (distFromCenter > boundaryRadius + 0.05) {
               gl_FragColor = vec4(backgroundColor, 1.0);
               return;
@@ -115,9 +138,12 @@ const fragmentShader = `
               if (i >= particleCount) break; // Only process active particles
 
               vec2 particleScreenPos = (particlePositions[i] * 0.5) + 0.5;
-              float distSq = dot(uv - particleScreenPos, uv - particleScreenPos);
-              float radius = particleSizes[i] / resolution.y;
+              float distSq = dot(scaledUV - particleScreenPos, scaledUV - particleScreenPos);
+              float radius = particleSizes[i] / resolution.y; // Use resolution.y assuming square canvas
               float radiusSq = radius * radius;
+
+              // Avoid division by zero or extreme influence at very close distances
+              if (radiusSq < 0.00001) continue;
 
               totalInfluence += exp(-distSq / (radiusSq * 0.5));
           }
@@ -195,8 +221,18 @@ async function init(config = {}) {
     console.log(
       `Container ${currentConfig.containerSelector} uses Mode: ${modeAttribute}`
     )
-    // Merge mode settings over defaults
+    // Merge mode settings over defaults, ensuring type safety
     instanceParams = { ...instanceParams, ...savedModes[modeAttribute] }
+    // Ensure simulationType is valid if loaded from mode
+    if (
+      instanceParams.simulationType !== 'metaball' &&
+      instanceParams.simulationType !== 'liquid repel'
+    ) {
+      console.warn(
+        `Invalid simulationType '${instanceParams.simulationType}' in Mode ${modeAttribute}. Defaulting to '${defaultParams.simulationType}'.`
+      )
+      instanceParams.simulationType = defaultParams.simulationType
+    }
   } else {
     // No valid mode attribute found, fall back to reading individual attributes
     console.log(
@@ -205,6 +241,28 @@ async function init(config = {}) {
     let attributeParams = readParametersFromDOM(container)
     // Merge attribute settings over defaults
     instanceParams = { ...instanceParams, ...attributeParams }
+    // Ensure simulationType is valid if loaded from attributes
+    if (
+      instanceParams.simulationType !== 'metaball' &&
+      instanceParams.simulationType !== 'liquid repel'
+    ) {
+      console.warn(
+        `Invalid simulationType '${instanceParams.simulationType}' from data attributes. Defaulting to '${defaultParams.simulationType}'.`
+      )
+      instanceParams.simulationType = defaultParams.simulationType
+    }
+  }
+
+  // Re-validate type and ensure all params exist
+  const type = instanceParams.simulationType
+  if (!['metaball', 'liquid repel'].includes(type)) {
+    instanceParams.simulationType = defaultParams.simulationType
+  }
+  for (const key in defaultParams) {
+    // Ensure all default keys exist after merges
+    if (instanceParams[key] === undefined) {
+      instanceParams[key] = defaultParams[key]
+    }
   }
 
   // --- Clamp initial particle amount from the chosen source (mode or attributes) ---
@@ -217,6 +275,9 @@ async function init(config = {}) {
   )
   console.log(
     `Instance ${currentConfig.containerSelector} - Initial particle amount set to: ${instanceParams.particleAmount} (clamped between 1 and ${MAX_PARTICLES})`
+  )
+  console.log(
+    `Instance ${currentConfig.containerSelector} - Initial simulation type: ${instanceParams.simulationType}`
   )
 
   // --- Initialize Global Uniform Arrays based on MAX_PARTICLES ---
@@ -266,11 +327,10 @@ async function init(config = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
   // Create Initial Particles using the final instanceParams
-  // We pass instanceParams here, which might have come from a mode or attributes
   particles = createParticles(instanceParams)
 
-  // Create Metaball Plane Shader Material
-  const geometry = new THREE.PlaneGeometry(2, 2)
+  // --- Create Metaball Plane Shader Material ---
+  const metaballGeometry = new THREE.PlaneGeometry(2, 2) // Use the existing 'geometry' variable name if preferred
   metaballMaterial = new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader: fragmentShader,
@@ -290,20 +350,21 @@ async function init(config = {}) {
       particleCount: { value: instanceParams.particleAmount }, // Use the correct initial count
       boundaryRadius: { value: instanceParams.boundaryRadius },
       threshold: { value: instanceParams.metaballThreshold },
+      canvasScale: { value: instanceParams.canvasScale },
     },
     defines: {
       MAX_PARTICLES: MAX_PARTICLES,
     },
   })
-  const quad = new THREE.Mesh(geometry, metaballMaterial)
-  scene.add(quad)
+  metaballQuad = new THREE.Mesh(metaballGeometry, metaballMaterial) // Assign to global
+  scene.add(metaballQuad) // Add the quad unconditionally
 
-  // Final Quad to display render target
+  // --- Final Quad to display render target ---
   const finalMaterial = new THREE.MeshBasicMaterial({
     map: renderTarget.texture,
   })
   finalQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), finalMaterial)
-  finalScene.add(finalQuad)
+  finalScene.add(finalQuad) // This is always added to finalScene
 
   // Setup Controls - Pass the final instanceParams to set initial control values
   // This is important for the energy.html configurator page
@@ -391,15 +452,15 @@ function readParametersFromDOM(targetContainer) {
   const getStringParam = (key) => getParam(key, String)
 
   // Read attributes if they exist, otherwise they remain undefined
+  attributeParams.simulationType = getStringParam('simulationType') // Reads the attribute
   attributeParams.particleAmount = getIntParam('particleAmount')
   attributeParams.particleSize = getParam('particleSize')
   attributeParams.particleSpeed = getParam('particleSpeed')
-  attributeParams.particleForce = getParam('particleForce')
-  // Use 'particleColor' and 'backgroundColor' for data attributes
+  attributeParams.particleForce = getParam('particleForce') // Metaball/Repel
+  attributeParams.metaballThreshold = getParam('metaballThreshold') // Metaball/Repel Visual
   attributeParams.particleColorHex = getStringParam('particleColor')
   attributeParams.backgroundColorHex = getStringParam('backgroundColor')
   attributeParams.boundaryRadius = getParam('boundaryRadius')
-  attributeParams.metaballThreshold = getParam('metaballThreshold')
 
   // Filter out undefined values so they don't overwrite defaults unnecessarily
   Object.keys(attributeParams).forEach(
@@ -471,6 +532,13 @@ function createParticles(currentParams) {
     particleSizesUniform[i] = instanceParticles[i].size
   }
 
+  // Fill remaining uniform slots with zeros? Optional.
+  for (let i = numParticles; i < MAX_PARTICLES; i++) {
+    particlePositionsUniform[i * 2] = 0
+    particlePositionsUniform[i * 2 + 1] = 0
+    particleSizesUniform[i] = 0
+  }
+
   // Update the particle count uniform
   if (metaballMaterial) {
     metaballMaterial.uniforms.particleCount.value = numParticles
@@ -488,7 +556,7 @@ function createParticles(currentParams) {
 
 // Gets the current settings from the UI controls
 function getCurrentSettingsFromControls() {
-  const settings = {}
+  const settings = { ...activeParams } // Start with current state to preserve inactive params
   const getValue = (id, parser = parseFloat) => {
     const element = document.getElementById(id)
     // Ensure control exists before trying to read value
@@ -496,8 +564,14 @@ function getCurrentSettingsFromControls() {
   }
   const getIntValue = (id) => getValue(id, parseInt)
   const getStringValue = (id) => getValue(id, String)
+  // Helper to get selected radio button value
+  const getRadioValue = (name) => {
+    const checkedRadio = document.querySelector(`input[name="${name}"]:checked`)
+    return checkedRadio ? checkedRadio.value : undefined
+  }
 
   // Read directly from controls
+  const simTypeFromControl = getRadioValue('simulationType')
   const amountFromControl = getIntValue('particleAmount')
   const sizeFromControl = getValue('particleSize')
   const speedFromControl = getValue('particleSpeed')
@@ -506,7 +580,7 @@ function getCurrentSettingsFromControls() {
   const backgroundColorFromControl = getStringValue('backgroundColor')
 
   // Use control value if available, otherwise fallback to the current activeParams
-  // This handles cases where controls might be missing but modes still exist
+  settings.simulationType = simTypeFromControl ?? activeParams.simulationType
   settings.particleAmount = amountFromControl ?? activeParams.particleAmount
   settings.particleSize = sizeFromControl ?? activeParams.particleSize
   settings.particleSpeed = speedFromControl ?? activeParams.particleSpeed
@@ -549,6 +623,34 @@ function triggerFileDownload(filename, content) {
 
 // --- Mode Management Functions ---
 
+// Helper to update value display spans
+function updateValueDisplay(spanId, value) {
+  const display = document.getElementById(spanId)
+  if (display && value !== undefined && value !== null) {
+    const num = parseFloat(value)
+    if (!isNaN(num)) {
+      // Determine step attribute from the associated input range (if possible)
+      const input = document.getElementById(spanId.replace('Value', ''))
+      const step = input ? parseFloat(input.step) : null
+      let decimals = 1 // Default decimals
+      if (step && step < 1) {
+        // Crude way to estimate decimals needed based on step
+        if (step <= 0.0001) decimals = 4
+        else if (step <= 0.001) decimals = 3
+        else if (step <= 0.01) decimals = 2
+        else decimals = 1
+      } else if (Number.isInteger(num)) {
+        decimals = 0
+      }
+      display.textContent = num.toFixed(decimals)
+    } else {
+      display.textContent = value // Fallback for non-numeric
+    }
+  } else if (display) {
+    display.textContent = '?' // Default if value missing
+  }
+}
+
 // Sets the current UI control settings as a mode in the session (in memory)
 function setCurrentSettingsAsMode(modeId) {
   if (!modeId || (modeId !== 'A' && modeId !== 'B')) {
@@ -559,11 +661,23 @@ function setCurrentSettingsAsMode(modeId) {
     return
   }
   const currentSettings = getCurrentSettingsFromControls()
+  // Ensure simulationType is captured and valid (allow all 3 types)
+  if (
+    !currentSettings.simulationType ||
+    (currentSettings.simulationType !== 'metaball' &&
+      currentSettings.simulationType !== 'liquid repel')
+  ) {
+    currentSettings.simulationType =
+      activeParams.simulationType || defaultParams.simulationType
+    console.warn(
+      `Simulation type missing from controls, using active/default: ${currentSettings.simulationType}`
+    )
+  }
   savedModes[modeId] = currentSettings // Update the mode in memory
   console.log(`Mode ${modeId} set in session memory:`, savedModes[modeId])
   alert(`Mode ${modeId} configuration updated for this session.`)
-  // Optional: Update activeParams to reflect the saved state, though UI already matches
-  // activeParams = { ...currentSettings };
+  // Optional: Update activeParams to reflect the saved state
+  // window.updateEnergySimulation(currentSettings); // Could call API to ensure consistency
 }
 
 // Loads a mode from memory into the preview and UI controls
@@ -576,82 +690,79 @@ function loadModeToPreview(modeId) {
     return
   }
   console.log(`Loading Mode ${modeId} to preview and controls...`)
-  const modeSettings = savedModes[modeId]
+  const modeSettings = { ...defaultParams, ...savedModes[modeId] }
 
-  // --- CRITICAL FIX: Call API *before* updating controls ---
-  // Let the API update activeParams and handle visual changes correctly
+  // Call API first
   window.updateEnergySimulation(modeSettings)
 
   // --- Update UI controls AFTER API call ---
-  // Now update the controls to match the modeSettings that were just loaded
-  const updateControl = (id, value, formatter) => {
+  const updateControl = (id, value) => {
     const control = document.getElementById(id)
-    const displayId = id + 'Value'
-    const display = document.getElementById(displayId)
     if (control) {
-      // Check type for color pickers
-      if (control.type === 'color') {
-        control.value = value
-      } else {
-        control.value = value // For range sliders etc.
-      }
-    }
-    if (display && formatter) {
-      display.textContent = formatter(value)
-    } else if (display) {
-      display.textContent = value
+      control.value = value
     }
   }
+  const updateRadioControl = (name, value) => {
+    const radioToCheck = document.querySelector(
+      `input[name="${name}"][value="${value}"]`
+    )
+    if (radioToCheck) {
+      radioToCheck.checked = true
+    } else {
+      console.warn(
+        `Could not find radio button for name "${name}" with value "${value}"`
+      )
+    }
+  }
+  const getVal = (key) => modeSettings[key] // Use merged settings
 
-  // Helper specifically for color (though combined logic above works)
-  // const updateColorControl = (id, value) => {
-  //   const control = document.getElementById(id);
-  //   if (control) control.value = value;
-  // };
+  // Update type radio
+  updateRadioControl('simulationType', getVal('simulationType'))
 
-  // Update controls, using fallbacks to defaultParams if a mode is somehow incomplete
-  const getVal = (key, fallback) =>
-    modeSettings[key] !== undefined ? modeSettings[key] : fallback
+  // Update SHARED controls & displays
+  updateControl('particleAmount', getVal('particleAmount'))
+  updateValueDisplay('particleAmountValue', getVal('particleAmount'))
+  updateControl('particleSize', getVal('particleSize'))
+  updateValueDisplay('particleSizeValue', getVal('particleSize'))
+  updateControl('particleSpeed', getVal('particleSpeed'))
+  updateValueDisplay('particleSpeedValue', getVal('particleSpeed'))
+  updateControl('particleColor', getVal('particleColorHex'))
+  updateControl('backgroundColor', getVal('backgroundColorHex'))
+  updateControl('boundaryRadius', getVal('boundaryRadius'))
+  updateValueDisplay('boundaryRadiusValue', getVal('boundaryRadius'))
 
-  updateControl(
-    'particleAmount',
-    getVal('particleAmount', defaultParams.particleAmount),
-    (v) => v.toString()
-  )
-  updateControl(
-    'particleSize',
-    getVal('particleSize', defaultParams.particleSize),
-    (v) => v.toFixed(1)
-  )
-  updateControl(
-    'particleSpeed',
-    getVal('particleSpeed', defaultParams.particleSpeed),
-    (v) => v.toFixed(2)
-  )
-  updateControl(
-    'particleForce',
-    getVal('particleForce', defaultParams.particleForce),
-    (v) => v.toFixed(1)
-  )
-  updateControl(
-    'particleColor',
-    getVal('particleColorHex', defaultParams.particleColorHex)
-  )
-  updateControl(
-    'backgroundColor',
-    getVal('backgroundColorHex', defaultParams.backgroundColorHex)
-  )
-  // Add updates for boundaryRadius, metaballThreshold if controls exist
-  // updateControl('boundaryRadius', getVal('boundaryRadius', defaultParams.boundaryRadius), v => v.toFixed(2));
-  // updateControl('metaballThreshold', getVal('metaballThreshold', defaultParams.metaballThreshold), v => v.toFixed(2));
+  // Update TYPE-SPECIFIC controls & displays
+  updateControl('particleForce', getVal('particleForce'))
+  updateValueDisplay('particleForceValue', getVal('particleForce'))
+  updateControl('metaballThreshold', getVal('metaballThreshold'))
+  updateValueDisplay('metaballThresholdValue', getVal('metaballThreshold'))
 
-  console.log(`Controls updated to reflect Mode ${modeId}.`)
+  console.log(`Mode ${modeId} loaded into controls.`)
 }
 
 // Saves the entire `savedModes` object (containing A & B from memory) to a file
 function saveAllModes() {
   console.log('Saving all modes (A & B) from memory to file...')
-  // Convert the *current* savedModes object (which was updated by 'Set Current as...')
+
+  // Ensure both modes have a valid simulationType before saving
+  const checkAndSetDefaultType = (mode) => {
+    if (!mode) return
+    if (
+      mode.simulationType === undefined ||
+      (mode.simulationType !== 'metaball' &&
+        mode.simulationType !== 'liquid repel')
+    ) {
+      mode.simulationType = defaultParams.simulationType // Use global default
+      console.warn(
+        `Added/corrected missing/invalid simulationType to Mode during save.`
+      )
+    }
+  }
+
+  checkAndSetDefaultType(savedModes.A)
+  checkAndSetDefaultType(savedModes.B)
+
+  // Convert the *current* savedModes object
   const jsonContent = JSON.stringify(savedModes, null, 2) // Pretty print
 
   // Trigger the download
@@ -662,254 +773,299 @@ function saveAllModes() {
 }
 
 // --- Control Setup ---
-// Pass the initial parameters (could be from mode or attributes)
 function setupControls(initialParams) {
   const controlsContainer = document.getElementById('controls')
   if (!controlsContainer) {
-    return // Exit if controls don't exist (e.g., in Webflow deployment)
+    return // Exit if controls don't exist
   }
 
   // --- Get references to ALL controls ---
+  // Shared
   const particleAmountSlider = document.getElementById('particleAmount')
   const particleAmountValue = document.getElementById('particleAmountValue')
   const particleSizeSlider = document.getElementById('particleSize')
   const particleSizeValue = document.getElementById('particleSizeValue')
   const particleSpeedSlider = document.getElementById('particleSpeed')
   const particleSpeedValue = document.getElementById('particleSpeedValue')
-  const particleForceSlider = document.getElementById('particleForce')
-  const particleForceValue = document.getElementById('particleForceValue')
   const particleColorPicker = document.getElementById('particleColor')
   const backgroundColorPicker = document.getElementById('backgroundColor')
+  const boundaryRadiusSlider = document.getElementById('boundaryRadius')
+  const boundaryRadiusValue = document.getElementById('boundaryRadiusValue')
+  // Metaball/Repel
+  const particleForceSlider = document.getElementById('particleForce')
+  const particleForceValue = document.getElementById('particleForceValue')
+  const metaballThresholdSlider = document.getElementById('metaballThreshold')
+  const metaballThresholdValue = document.getElementById(
+    'metaballThresholdValue'
+  )
+  // Other
+  const simTypeRadios = document.querySelectorAll(
+    'input[name="simulationType"]'
+  )
   const playStopButton = document.getElementById('playStopButton')
-
-  // New Mode Management Buttons
   const setCurrentAsModeAButton = document.getElementById('setCurrentAsModeA')
   const setCurrentAsModeBButton = document.getElementById('setCurrentAsModeB')
   const selectModeAButton = document.getElementById('selectModeA')
   const selectModeBButton = document.getElementById('selectModeB')
   const saveAllModesButton = document.getElementById('saveAllModes')
+  // Get reference to new control
+  const canvasScaleSlider = document.getElementById('canvasScale')
+  const canvasScaleValue = document.getElementById('canvasScaleValue')
 
   // Helper function to safely set control value and display
-  const setupControl = (
-    slider,
-    valueDisplay,
-    paramValue,
-    formatter = (v) => v.toFixed(1)
-  ) => {
-    if (slider) {
-      slider.value = paramValue
-      if (valueDisplay) valueDisplay.textContent = formatter(paramValue)
-    }
+  const setupControl = (slider, valueDisplay, value) => {
+    if (slider && value !== undefined) slider.value = value
+    // Call updateValueDisplay here to ensure initial format is correct
+    if (valueDisplay) updateValueDisplay(valueDisplay.id, value)
   }
   const setupColorControl = (picker, colorHex) => {
-    if (picker) picker.value = colorHex
+    if (picker && colorHex) picker.value = colorHex
+  }
+  const setupRadioControl = (radios, value) => {
+    radios.forEach((radio) => {
+      radio.checked = radio.value === value
+    })
   }
 
   // --- Set initial values from initialParams ---
-  // ... (This section remains the same, setting up the initial state based on loaded params) ...
-  if (particleAmountSlider) {
-    particleAmountSlider.max = MAX_PARTICLES // Set the slider max dynamically
-    const initialAmount = Math.max(
-      1,
-      Math.min(
-        initialParams.particleAmount || defaultParams.particleAmount,
-        MAX_PARTICLES
-      )
-    )
-    setupControl(
-      particleAmountSlider,
-      particleAmountValue,
-      initialAmount,
-      (v) => v.toString()
-    )
-  } else if (particleAmountValue) {
-    // Set display even if slider missing
-    particleAmountValue.textContent = Math.max(
-      1,
-      Math.min(
-        initialParams.particleAmount || defaultParams.particleAmount,
-        MAX_PARTICLES
-      )
-    ).toString()
-  }
-
+  const params = initialParams
+  setupRadioControl(simTypeRadios, params.simulationType)
+  // Shared
+  if (particleAmountSlider) particleAmountSlider.max = MAX_PARTICLES
+  setupControl(particleAmountSlider, particleAmountValue, params.particleAmount)
+  setupControl(particleSizeSlider, particleSizeValue, params.particleSize)
+  setupControl(particleSpeedSlider, particleSpeedValue, params.particleSpeed)
+  setupColorControl(particleColorPicker, params.particleColorHex)
+  setupColorControl(backgroundColorPicker, params.backgroundColorHex)
+  setupControl(boundaryRadiusSlider, boundaryRadiusValue, params.boundaryRadius)
+  // Metaball/Repel
+  setupControl(particleForceSlider, particleForceValue, params.particleForce)
   setupControl(
-    particleSizeSlider,
-    particleSizeValue,
-    initialParams.particleSize ?? defaultParams.particleSize, // Use nullish coalescing
-    (v) => v.toFixed(1)
+    metaballThresholdSlider,
+    metaballThresholdValue,
+    params.metaballThreshold
   )
-  setupControl(
-    particleSpeedSlider,
-    particleSpeedValue,
-    initialParams.particleSpeed ?? defaultParams.particleSpeed,
-    (v) => v.toFixed(2)
-  )
-  setupControl(
-    particleForceSlider,
-    particleForceValue,
-    initialParams.particleForce ?? defaultParams.particleForce,
-    (v) => v.toFixed(1)
-  )
-  setupColorControl(
-    particleColorPicker,
-    initialParams.particleColorHex ?? defaultParams.particleColorHex
-  )
-  setupColorControl(
-    backgroundColorPicker,
-    initialParams.backgroundColorHex ?? defaultParams.backgroundColorHex
-  )
-  // Add setup for boundaryRadius, metaballThreshold if controls exist
+  // Get reference to new control
+  setupControl(canvasScaleSlider, canvasScaleValue, params.canvasScale)
 
   // --- Event listeners for LIVE controls ---
-  // (These remain largely the same, calling the API to update the preview)
-  if (particleAmountSlider) {
+  // Shared listeners
+  if (particleAmountSlider)
     particleAmountSlider.addEventListener('input', (e) => {
-      const newAmount = parseInt(e.target.value)
-      if (particleAmountValue) particleAmountValue.textContent = newAmount // Keep UI updated
-      // Directly call updateEnergySimulation to handle param update and particle recreation
-      window.updateEnergySimulation({ particleAmount: newAmount })
+      const v = parseInt(e.target.value)
+      updateValueDisplay('particleAmountValue', v)
+      window.updateEnergySimulation({ particleAmount: v })
     })
-  }
-
-  if (particleSizeSlider) {
+  if (particleSizeSlider)
     particleSizeSlider.addEventListener('input', (e) => {
-      const newSize = parseFloat(e.target.value)
-      if (particleSizeValue) particleSizeValue.textContent = newSize.toFixed(1) // Keep UI updated
-      // Call update function
-      window.updateEnergySimulation({ particleSize: newSize })
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('particleSizeValue', v)
+      window.updateEnergySimulation({ particleSize: v })
     })
-  }
-
-  if (particleSpeedSlider) {
+  if (particleSpeedSlider)
     particleSpeedSlider.addEventListener('input', (e) => {
-      const newSpeed = parseFloat(e.target.value)
-      if (particleSpeedValue)
-        particleSpeedValue.textContent = newSpeed.toFixed(2) // Keep UI updated
-      // Call update function (it will update activeParams internally)
-      window.updateEnergySimulation({ particleSpeed: newSpeed })
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('particleSpeedValue', v)
+      window.updateEnergySimulation({ particleSpeed: v })
     })
-  }
-
-  if (particleForceSlider) {
+  if (particleColorPicker)
+    particleColorPicker.addEventListener('input', (e) =>
+      window.updateEnergySimulation({ particleColorHex: e.target.value })
+    )
+  if (backgroundColorPicker)
+    backgroundColorPicker.addEventListener('input', (e) =>
+      window.updateEnergySimulation({ backgroundColorHex: e.target.value })
+    )
+  // Boundary Radius Listener (Now correctly referenced)
+  if (boundaryRadiusSlider)
+    boundaryRadiusSlider.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('boundaryRadiusValue', v)
+      window.updateEnergySimulation({ boundaryRadius: v })
+    })
+  // Metaball/Repel listeners
+  if (particleForceSlider)
     particleForceSlider.addEventListener('input', (e) => {
-      const newForce = parseFloat(e.target.value)
-      if (particleForceValue)
-        particleForceValue.textContent = newForce.toFixed(1) // Keep UI updated
-      // Call update function
-      window.updateEnergySimulation({ particleForce: newForce })
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('particleForceValue', v)
+      window.updateEnergySimulation({ particleForce: v })
+    })
+  // Metaball Threshold Listener (Now correctly referenced)
+  if (metaballThresholdSlider)
+    metaballThresholdSlider.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('metaballThresholdValue', v)
+      window.updateEnergySimulation({ metaballThreshold: v })
+    })
+  // Get reference to new control
+  if (canvasScaleSlider)
+    canvasScaleSlider.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('canvasScaleValue', v)
+      window.updateEnergySimulation({ canvasScale: v })
+    })
+
+  // Simulation Type Change Listener
+  if (simTypeRadios.length > 0) {
+    simTypeRadios.forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          const newType = e.target.value
+          if (['metaball', 'liquid repel'].includes(newType)) {
+            console.log(`UI: Simulation type changed to: ${newType}`)
+            window.updateEnergySimulation({ simulationType: newType })
+          }
+        }
+      })
     })
   }
-
-  if (particleColorPicker) {
-    particleColorPicker.addEventListener('input', (e) => {
-      const newColor = e.target.value
-      // Call update function
-      window.updateEnergySimulation({ particleColorHex: newColor })
+  // Play/Stop Button
+  if (playStopButton)
+    playStopButton.addEventListener('click', () => {
+      simulationRunning = !simulationRunning
+      playStopButton.textContent = simulationRunning ? 'Stop' : 'Play'
     })
-  }
-
-  if (backgroundColorPicker) {
-    backgroundColorPicker.addEventListener('input', (e) => {
-      const newColor = e.target.value
-      // Call update function
-      window.updateEnergySimulation({ backgroundColorHex: newColor })
-    })
-  }
-  // Add listeners for boundaryRadius, metaballThreshold if controls exist
-
-  if (playStopButton) {
-    // ... existing listener ...
-  }
-
-  // --- Event listeners for Mode Management buttons ---
-  if (setCurrentAsModeAButton) {
+  // Mode Management Buttons
+  if (setCurrentAsModeAButton)
     setCurrentAsModeAButton.addEventListener('click', () =>
       setCurrentSettingsAsMode('A')
     )
-  }
-  if (setCurrentAsModeBButton) {
+  if (setCurrentAsModeBButton)
     setCurrentAsModeBButton.addEventListener('click', () =>
       setCurrentSettingsAsMode('B')
     )
-  }
-  if (selectModeAButton) {
+  if (selectModeAButton)
     selectModeAButton.addEventListener('click', () => loadModeToPreview('A'))
-  }
-  if (selectModeBButton) {
+  if (selectModeBButton)
     selectModeBButton.addEventListener('click', () => loadModeToPreview('B'))
-  }
-  if (saveAllModesButton) {
+  if (saveAllModesButton)
     saveAllModesButton.addEventListener('click', saveAllModes)
-  }
 }
 
 // --- Update Simulation ---
 function updateParticles(deltaTime) {
-  if (!particlePositionsUniform || !particles || !metaballMaterial) {
-    console.warn('updateParticles called before simulation fully initialized.')
+  // Guard clause only needs metaballMaterial now
+  if (!particles || !metaballMaterial) {
     return
   }
 
-  // Use activeParams for simulation logic when controls are present
-  // For instances initialized via data-mode/attributes without controls,
-  // their parameters are baked into the uniforms/initial state.
-  // The `activeParams` reflects the state driven by the UI controls panel.
-  const currentParams = activeParams // Use the active parameters
-
-  const forceFactor = currentParams.particleForce * 0.0001
-  const speedFactor = currentParams.particleSpeed * deltaTime * 30
+  const currentParams = activeParams
+  const speedFactor = currentParams.particleSpeed * deltaTime * 60
   const boundary = currentParams.boundaryRadius
-  const boundarySq = boundary * boundary
-  const damping = 0.985
-  const particleCount = metaballMaterial.uniforms.particleCount.value
+  const damping = 0.98
+  const activeParticleCount = currentParams.particleAmount
 
-  for (let i = 0; i < particleCount; i++) {
+  // Type specific parameters
+  const forceFactor = currentParams.particleForce * 0.0001
+  const repelGravity = new THREE.Vector2(0, -0.0018)
+  const canvasSize = currentParams.canvasSize || defaultParams.canvasSize
+  const particleRadiusFactor = 1 / (canvasSize * 2)
+
+  // --- Main Physics Loop ---
+  for (let i = 0; i < activeParticleCount; i++) {
     if (!particles[i]) continue
     const p1 = particles[i]
+    const p1Radius = p1.size * particleRadiusFactor * 0.5
 
-    // Apply forces from other ACTIVE particles
-    for (let j = i + 1; j < particleCount; j++) {
-      // Loop up to particleCount
-      if (!particles[j]) continue // Safety check
-      const p2 = particles[j]
-      const delta = p2.position.clone().sub(p1.position)
-      const distSq = delta.lengthSq()
+    let totalForce = new THREE.Vector2()
 
-      if (distSq > 0.00001 && distSq < boundary * boundary * 4) {
-        const forceMagnitude = forceFactor / distSq
-        const forceVec = delta.normalize().multiplyScalar(forceMagnitude)
-        p1.velocity.add(forceVec)
-        p2.velocity.sub(forceVec)
+    // --- Apply Type-Specific Forces & Gravity ---
+    if (
+      currentParams.simulationType === 'metaball' ||
+      currentParams.simulationType === 'liquid repel'
+    ) {
+      // Calculate Inter-Particle Forces
+      for (let j = i + 1; j < activeParticleCount; j++) {
+        if (!particles[j]) continue
+        const p2 = particles[j]
+        const delta = p2.position.clone().sub(p1.position)
+        const distSq = delta.lengthSq()
+        if (distSq > 0.00001 && distSq < boundary * 1.5 * (boundary * 1.5)) {
+          const forceMagnitude = forceFactor / Math.max(distSq, 0.0001)
+          const forceVec = delta.normalize().multiplyScalar(forceMagnitude)
+          totalForce.add(forceVec)
+          if (particles[j].velocity) particles[j].velocity.sub(forceVec)
+        }
+      }
+      p1.velocity.add(totalForce) // Apply accumulated force
+
+      // Apply Gravity (Only for Liquid Repel)
+      if (currentParams.simulationType === 'liquid repel') {
+        p1.velocity.add(repelGravity.clone().multiplyScalar(deltaTime * 60))
+
+        // --- Simulate Boiling/Bubbling near bottom ---
+        const floorY = -boundary + p1Radius // Floor position for this particle
+        const nearBottomThreshold = floorY + p1Radius * 3 // How close to be considered 'near bottom'
+        const velocitySq = p1.velocity.lengthSq()
+
+        // Apply only if near the bottom and moving slowly or settled
+        if (p1.position.y < nearBottomThreshold && velocitySq < 0.0001) {
+          // Add upward 'buoyancy' force - make it slightly random
+          const buoyancyStrength = 0.0005 + Math.random() * 0.0005 // Adjust strength range as needed
+          p1.velocity.y += buoyancyStrength
+
+          // Add random horizontal jitter
+          const jitterStrength = 0.0002 // Adjust strength as needed
+          p1.velocity.x += (Math.random() - 0.5) * jitterStrength
+        }
       }
     }
 
-    // Update position
-    p1.position.add(p1.velocity.clone().multiplyScalar(speedFactor))
+    // --- Apply General Damping ---
+    let effectiveDamping = damping
+    p1.velocity.multiplyScalar(effectiveDamping)
 
-    // Apply damping
-    p1.velocity.multiplyScalar(damping)
+    // --- Calculate tentative new position (BEFORE collision checks) ---
+    const tentativePosition = p1.position
+      .clone()
+      .add(p1.velocity.clone().multiplyScalar(speedFactor))
 
-    // Boundary Collision
-    const distFromCenterSq = p1.position.lengthSq()
-    if (distFromCenterSq > boundarySq) {
-      const normal = p1.position.clone().normalize()
-      const dotProduct = p1.velocity.dot(normal)
-      const reflection = normal.clone().multiplyScalar(2 * dotProduct)
-      p1.velocity.sub(reflection)
-      // Clamp position precisely to the boundary after reflection
-      p1.position.normalize().multiplyScalar(boundary)
+    // --- Handle Collisions (using tentativePosition and updating p1.position/p1.velocity) ---
+    const currentBoundary = boundary - p1Radius
+
+    let collided = false
+    if (
+      currentParams.simulationType === 'metaball' ||
+      currentParams.simulationType === 'liquid repel'
+    ) {
+      const currentBoundarySq = currentBoundary * currentBoundary
+      const distSqFromCenter = tentativePosition.lengthSq()
+
+      if (distSqFromCenter > currentBoundarySq) {
+        collided = true
+        const distFromCenter = Math.sqrt(distSqFromCenter)
+        const normal = tentativePosition.clone().divideScalar(distFromCenter)
+        // Clamp position to boundary
+        p1.position.copy(normal.multiplyScalar(currentBoundary))
+
+        // Apply reflection response to velocity
+        const dotProduct = p1.velocity.dot(normal)
+        if (dotProduct > 0) {
+          // Moving outwards
+          // Reflect velocity component normal to the boundary
+          p1.velocity.sub(normal.clone().multiplyScalar(2 * dotProduct))
+          // Apply damping based on type
+          const boundaryDamping =
+            currentParams.simulationType === 'metaball' ? 0.8 : 0.5 // Stronger damping for repel
+          p1.velocity.multiplyScalar(boundaryDamping)
+        }
+      }
     }
 
-    // Update uniform array
+    // --- Update Position ---
+    // If no collision occurred, use the tentative position
+    if (!collided) {
+      p1.position.copy(tentativePosition)
+    }
+    // If a collision DID occur, p1.position was already clamped inside the collision logic.
+
+    // --- Update Shared Uniform Arrays ---
     particlePositionsUniform[i * 2] = p1.position.x
     particlePositionsUniform[i * 2 + 1] = p1.position.y
-  }
+  } // --- End of Main Physics Loop ---
 
-  // Mark position uniform for update
-  if (metaballMaterial) {
-    metaballMaterial.uniforms.particlePositions.needsUpdate = true
-  }
+  // --- Post-Loop Updates ---
+  metaballMaterial.uniforms.particlePositions.needsUpdate = true
 }
 
 // --- Window Resize ---
@@ -932,12 +1088,13 @@ function animate() {
     updateParticles(deltaTime)
   }
 
-  if (renderer && scene && camera) {
-    // First render the simulation to the render target
+  if (renderer && scene && camera && finalScene && finalCamera) {
+    // --- Simplified Rendering Path (Always Metaball Shader) ---
+    // 1. Render main scene (containing metaballQuad) to the offscreen renderTarget
     renderer.setRenderTarget(renderTarget)
     renderer.render(scene, camera)
 
-    // Then render the render target to the canvas
+    // 2. Render finalScene (containing finalQuad with the renderTarget texture) to the screen
     renderer.setRenderTarget(null)
     renderer.render(finalScene, finalCamera)
   }
@@ -955,231 +1112,181 @@ window.initializeEnergySimulation = function (config = {}) {
 // This API primarily targets the instance being actively controlled by the UI (energy.html)
 // It updates `activeParams` and applies changes to the *current* scene/material/particles.
 window.updateEnergySimulation = function (newParams) {
-  // Check if essential components are ready
-  // Use activeParams as the base for updates triggered externally or by controls
-  if (!metaballMaterial || !scene) {
-    console.warn('Simulation components not ready for update via API.')
+  // Guard clause
+  if (!particles || !scene || !metaballMaterial) {
     return
   }
   if (typeof newParams !== 'object' || newParams === null) {
-    console.warn('updateEnergySimulation expects an object of parameters.')
     return
   }
 
-  console.log('Attempting to update simulation via API with:', newParams)
+  console.log('API Update with:', newParams)
+  let changeDetectedOverall = false // Track if any param actually changed
+  const previousType = activeParams.simulationType
+  const previousAmount = activeParams.particleAmount
 
-  let needsUniformUpdate = false
-  let needsSceneUpdate = false
-  let needsParticleRecreation = false
-  let changeDetected = false // Flag to track if *any* relevant parameter changed
+  // --- Update activeParams safely ---
+  for (const key in newParams) {
+    if (activeParams.hasOwnProperty(key)) {
+      const incomingValue = newParams[key]
+      let processedValue = incomingValue
 
-  // --- Handle Particle Amount Change ---
-  if (newParams.particleAmount !== undefined) {
-    const newAmount = parseInt(newParams.particleAmount)
-    if (!isNaN(newAmount) && newAmount >= 1 && newAmount <= MAX_PARTICLES) {
-      if (newAmount !== activeParams.particleAmount) {
-        activeParams.particleAmount = newAmount
-        console.log(
-          `API: Set particle amount to ${activeParams.particleAmount}`
-        )
-        needsParticleRecreation = true
-        changeDetected = true
-        // Update display (already handled by input listener, but good practice)
-        const display = document.getElementById('particleAmountValue')
-        if (display)
-          display.textContent = activeParams.particleAmount.toString()
+      // Coerce type if necessary (simple version)
+      if (typeof activeParams[key] === 'number') {
+        processedValue = parseFloat(incomingValue)
+        if (isNaN(processedValue)) {
+          console.warn(`API: Invalid number format for ${key}:`, incomingValue)
+          continue // Skip update for this key
+        }
+      } else if (typeof activeParams[key] === 'string') {
+        processedValue = String(incomingValue)
+      } // Add boolean etc. if needed
+
+      // Update if value is actually different
+      if (processedValue !== activeParams[key]) {
+        activeParams[key] = processedValue
+        changeDetectedOverall = true
+        // console.log(`API: Updated activeParams.${key} to ${processedValue}`);
       }
-    } else {
-      console.warn(
-        `API: Invalid or out-of-range particleAmount value: ${newParams.particleAmount}. Must be between 1 and ${MAX_PARTICLES}.`
-      )
     }
   }
 
-  // --- Update other parameters in activeParams and apply ---
-  if (newParams.particleColorHex !== undefined) {
-    // Check if changed *before* updating activeParams
-    if (newParams.particleColorHex !== activeParams.particleColorHex) {
-      activeParams.particleColorHex = newParams.particleColorHex
-      // Ensure the THREE.Color object exists and update it
-      if (!activeParams.particleColor)
-        activeParams.particleColor = new THREE.Color()
-      activeParams.particleColor.set(activeParams.particleColorHex)
-      // Update the uniform
-      metaballMaterial.uniforms.particleColor.value.set(
-        activeParams.particleColorHex
-      ) // Directly update uniform color
-      needsUniformUpdate = true
-      console.log(
-        'API: Updated particle color to:',
-        activeParams.particleColorHex
-      )
-      // Update control (color picker updates automatically via its value binding)
-    }
-  }
+  // Re-clamp amount AFTER potential update
+  activeParams.particleAmount = Math.max(
+    1,
+    Math.min(activeParams.particleAmount, MAX_PARTICLES)
+  )
+  const currentAmount = activeParams.particleAmount
 
-  if (newParams.backgroundColorHex !== undefined) {
-    // Check if changed *before* updating activeParams
-    if (newParams.backgroundColorHex !== activeParams.backgroundColorHex) {
-      activeParams.backgroundColorHex = newParams.backgroundColorHex
-      // Ensure the THREE.Color object exists and update it
-      if (!activeParams.backgroundColor)
-        activeParams.backgroundColor = new THREE.Color()
-      activeParams.backgroundColor.set(activeParams.backgroundColorHex)
-      // Update scene background and uniform
-      scene.background.set(activeParams.backgroundColorHex) // Directly update scene background color
-      metaballMaterial.uniforms.backgroundColor.value.set(
-        activeParams.backgroundColorHex
-      ) // Directly update uniform color
-      needsSceneUpdate = true
-      needsUniformUpdate = true
-      console.log(
-        'API: Updated background color to:',
-        activeParams.backgroundColorHex
-      )
-      // Update control (color picker updates automatically via its value binding)
-    }
-  }
+  // --- Handle consequences of changes ---
+  let needsParticleRecreation = currentAmount !== previousAmount // Recreate only if amount changed
 
-  if (newParams.particleSpeed !== undefined) {
-    const speed = parseFloat(newParams.particleSpeed)
-    if (!isNaN(speed)) {
-      // Check if changed *before* updating activeParams
-      if (speed !== activeParams.particleSpeed) {
-        activeParams.particleSpeed = speed // Update activeParams
-        console.log(
-          'API: Updated particle speed to:',
-          activeParams.particleSpeed
-        )
-        // Call update function (it will update activeParams internally)
-        // const display = document.getElementById('particleSpeedValue');
-        // if (display) display.textContent = activeParams.particleSpeed.toFixed(2);
-      }
-    } else {
-      console.warn('API: Invalid particleSpeed value:', newParams.particleSpeed)
-    }
-  }
-
-  if (newParams.particleForce !== undefined) {
-    const force = parseFloat(newParams.particleForce)
-    if (!isNaN(force)) {
-      // Check if changed *before* updating activeParams
-      if (force !== activeParams.particleForce) {
-        activeParams.particleForce = force // Update activeParams
-        console.log(
-          'API: Updated particle force to:',
-          activeParams.particleForce
-        )
-        // Call update function (it will update activeParams internally)
-        // const display = document.getElementById('particleForceValue');
-        // if (display) display.textContent = activeParams.particleForce.toFixed(1);
-      }
-    } else {
-      console.warn('API: Invalid particleForce value:', newParams.particleForce)
-    }
-  }
-
-  if (newParams.particleSize !== undefined) {
-    const newSize = parseFloat(newParams.particleSize)
-    if (!isNaN(newSize) && newSize > 0) {
-      // Check if changed *before* updating activeParams
-      if (newSize !== activeParams.particleSize) {
-        activeParams.particleSize = newSize // Update activeParams
-        const currentParticleCount =
-          metaballMaterial.uniforms.particleCount.value
-        // Update existing particles and uniforms
-        particles.forEach((p, i) => {
-          if (i < currentParticleCount) {
-            p.size = activeParams.particleSize // Use updated size
-            particleSizesUniform[i] = p.size
-          }
-        })
-        metaballMaterial.uniforms.particleSizes.needsUpdate = true
-        needsUniformUpdate = true
-        console.log('API: Updated particle size to:', activeParams.particleSize)
-        // Update display (already handled by input listener)
-        // const display = document.getElementById('particleSizeValue')
-        // if (display) display.textContent = activeParams.particleSize.toFixed(1)
-      }
-    } else {
-      console.warn('API: Invalid particleSize value:', newParams.particleSize)
-    }
-  }
-
-  if (newParams.metaballThreshold !== undefined) {
-    const threshold = parseFloat(newParams.metaballThreshold)
-    if (!isNaN(threshold)) {
-      // Check if changed *before* updating activeParams
-      if (threshold !== activeParams.metaballThreshold) {
-        activeParams.metaballThreshold = threshold // Update activeParams
-        metaballMaterial.uniforms.threshold.value =
-          activeParams.metaballThreshold
-        needsUniformUpdate = true
-        console.log(
-          'API: Updated metaball threshold to:',
-          activeParams.metaballThreshold
-        )
-      }
-    } else {
-      console.warn(
-        'API: Invalid metaballThreshold value:',
-        newParams.metaballThreshold
-      )
-    }
-  }
-
-  if (newParams.boundaryRadius !== undefined) {
-    const radius = parseFloat(newParams.boundaryRadius)
-    if (!isNaN(radius) && radius > 0) {
-      // Check if changed *before* updating activeParams
-      if (radius !== activeParams.boundaryRadius) {
-        activeParams.boundaryRadius = radius // Update activeParams
-        metaballMaterial.uniforms.boundaryRadius.value =
-          activeParams.boundaryRadius
-        needsUniformUpdate = true
-        console.log(
-          'API: Updated boundary radius to:',
-          activeParams.boundaryRadius
-        )
-      }
-    } else {
-      console.warn(
-        'API: Invalid boundaryRadius value:',
-        newParams.boundaryRadius
-      )
-    }
-  }
-
-  // --- Perform Particle Recreation if needed ---
+  // --- Particle recreation ---
   if (needsParticleRecreation) {
-    console.log('API: Recreating particles due to amount change.')
-    particles = createParticles(activeParams) // This uses the updated activeParams
-    needsUniformUpdate = true
+    console.log(
+      'API: Recreating particles for amount change to:',
+      currentAmount
+    )
+    particles = createParticles(activeParams) // Resets uniforms/count internally
   }
 
-  // --- Final Logging ---
-  if (changeDetected) {
-    // Check if any relevant parameter actually changed
-    console.log('API: Applied updates.')
-  } else if (Object.keys(newParams).length > 0) {
-    console.log('API: No change detected for provided parameters.')
-  } else {
-    console.log('API: No valid parameters found to update.')
+  // --- Type Change effects ---
+  if (activeParams.simulationType !== previousType) {
+    console.log(
+      'API: Type changed from',
+      previousType,
+      'to',
+      activeParams.simulationType
+    )
+  }
+
+  // --- Update Uniforms Directly Based on activeParams ---
+  // Update uniforms regardless of changeDetected, as the state *might* need syncing
+  // especially after type changes or particle recreation.
+  let uniformsUpdated = false // Track if uniforms were actually modified
+
+  // Background Color (Scene and Uniform)
+  if (
+    scene.background.getHexString() !==
+    activeParams.backgroundColorHex.substring(1)
+  ) {
+    scene.background.set(activeParams.backgroundColorHex)
+    metaballMaterial.uniforms.backgroundColor.value.set(
+      activeParams.backgroundColorHex
+    )
+    uniformsUpdated = true
+  }
+  // Particle Color Uniform
+  if (
+    metaballMaterial.uniforms.particleColor.value.getHexString() !==
+    activeParams.particleColorHex.substring(1)
+  ) {
+    metaballMaterial.uniforms.particleColor.value.set(
+      activeParams.particleColorHex
+    )
+    uniformsUpdated = true
+  }
+  // Particle Count Uniform
+  if (
+    metaballMaterial.uniforms.particleCount.value !==
+    activeParams.particleAmount
+  ) {
+    metaballMaterial.uniforms.particleCount.value = activeParams.particleAmount
+    uniformsUpdated = true
+  }
+  // Boundary Radius Uniform
+  if (
+    metaballMaterial.uniforms.boundaryRadius.value !==
+    activeParams.boundaryRadius
+  ) {
+    metaballMaterial.uniforms.boundaryRadius.value = activeParams.boundaryRadius
+    uniformsUpdated = true
+  }
+  // Threshold Uniform
+  if (
+    metaballMaterial.uniforms.threshold.value !== activeParams.metaballThreshold
+  ) {
+    metaballMaterial.uniforms.threshold.value = activeParams.metaballThreshold
+    uniformsUpdated = true
+  }
+  // Particle Sizes Uniform (update if size changed or particles recreated)
+  // Check if any active particle's size differs from the uniform array's corresponding entry OR if recreated
+  let sizeMismatch = false
+  if (changeDetectedOverall && newParams.particleSize !== undefined) {
+    // Check if size was explicitly passed and changed
+    sizeMismatch = true
+  } else if (needsParticleRecreation) {
+    // Always update sizes if recreating
+    sizeMismatch = true
+  }
+
+  if (sizeMismatch) {
+    // Update particle data array (if size changed)
+    if (newParams.particleSize !== undefined) {
+      particles.forEach((p) => {
+        if (p) p.size = activeParams.particleSize
+      })
+    }
+    // Update uniform array (always sync after potential change/recreation)
+    for (let i = 0; i < MAX_PARTICLES; ++i) {
+      // Use size from particle data if it exists and is active, else 0
+      particleSizesUniform[i] =
+        i < currentAmount && particles[i] ? particles[i].size : 0
+    }
+    metaballMaterial.uniforms.particleSizes.needsUpdate = true
+    uniformsUpdated = true
+    // console.log("API: Updating size uniform array.");
+  }
+
+  // Position uniform is marked in updateParticles, but ensure flag is set if other uniforms change
+  if (uniformsUpdated) {
+    metaballMaterial.uniforms.particlePositions.needsUpdate = true // Ensure position updates render
+  }
+
+  // Add handling for canvasScale uniform
+  if (
+    metaballMaterial.uniforms.canvasScale.value !== activeParams.canvasScale
+  ) {
+    metaballMaterial.uniforms.canvasScale.value = activeParams.canvasScale
+    uniformsUpdated = true
+  }
+
+  if (changeDetectedOverall) {
+    console.log('API: Applied updates. Current activeParams:', activeParams)
   }
 }
 
-// --- Initialization Logic ---
-// No longer needs to be async just because of loadModes
+// --- Modify Initialization Logic ---
 function initializeSimulations() {
   // 1. Load modes synchronously first
   loadModes() // Call the sync function
+  window.savedModes = savedModes // Make loaded modes globally accessible for controller/API
 
   // 2. Attempt initialization for the testbed (energy.html)
   const testContainer = document.getElementById('container')
   const testCanvas = document.getElementById('simulationCanvas')
   if (testContainer && testCanvas) {
     console.log('Attempting initialization for HTML testbed (#container)')
-    // init doesn't need await if it has no other async operations
     init({
       containerSelector: '#container',
       createCanvas: false,
@@ -1192,18 +1299,19 @@ function initializeSimulations() {
     console.log(
       `Found ${webflowContainers.length} Webflow container(s) (.energy-container). Attempting initialization...`
     )
-    // No need for async loop/await here anymore
     for (const container of webflowContainers) {
-      // ... logic to determine stableSelector ...
       let stableSelector
       if (container.id) {
         stableSelector = `#${container.id}`
       } else {
-        stableSelector = '.energy-container'
-        console.warn(/* ... */)
+        const containers = document.querySelectorAll('.energy-container')
+        let index = Array.prototype.indexOf.call(containers, container)
+        stableSelector = `.energy-container:nth-of-type(${index + 1})`
+        console.warn(
+          `Webflow container lacks ID. Using potentially unstable selector: ${stableSelector}. Add a unique ID for reliability.`
+        )
       }
 
-      // Call init directly
       init({
         containerSelector: stableSelector,
         createCanvas: true,
@@ -1212,54 +1320,11 @@ function initializeSimulations() {
   }
 }
 
-// --- Event Listener for External Mode Buttons ---
-function setupExternalModeButtons() {
-  document.body.addEventListener('click', (event) => {
-    // Find the clicked element or its ancestor that has the data-set-mode attribute
-    const button = event.target.closest('[data-set-mode]')
-
-    if (!button) {
-      return // Click was not on a mode button or its descendant
-    }
-
-    const modeId = button.dataset.setMode?.toUpperCase() // Get 'A' or 'B'
-
-    if (!modeId || (modeId !== 'A' && modeId !== 'B')) {
-      console.warn(`Invalid mode specified on button: ${modeId}`)
-      return
-    }
-
-    if (!savedModes[modeId]) {
-      console.error(
-        `Mode "${modeId}" not found in savedModes. Ensure energyModes.json is loaded and the mode exists.`
-      )
-      // Optionally provide user feedback, e.g., disable button?
-      return
-    }
-
-    console.log(`External button clicked: Setting mode to ${modeId}`)
-    const modeSettings = savedModes[modeId]
-
-    // Call the existing API to update the simulation
-    // This assumes the API targets the correct (likely the first/only) simulation instance
-    window.updateEnergySimulation(modeSettings)
-
-    // Optional: Add an 'active' class to the clicked button and remove from others
-    document
-      .querySelectorAll('[data-set-mode]')
-      .forEach((btn) => btn.classList.remove('active-energy-mode'))
-    button.classList.add('active-energy-mode')
-  })
-  console.log('Set up event listener for external [data-set-mode] buttons.')
-}
-
 // --- Execute Initialization ---
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     initializeSimulations()
-    setupExternalModeButtons() // Add the listener after initial simulations setup
   })
 } else {
   initializeSimulations()
-  setupExternalModeButtons() // Add the listener if DOM already ready
 }

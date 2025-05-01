@@ -20,80 +20,168 @@
       data-particle-force="0.2"
       data-boundary-radius="0.4"
       data-metaball-threshold="0.6"
+      data-simulation-type="metaball"
     >
       <!-- Controls Panel -->
       <div id="controls">
         <h2 class="text-lg font-semibold mb-4 text-gray-700">Live Controls</h2>
 
-        <!-- Existing Controls -->
-        <label for="particleAmount"
-          >Particle Amount (<span id="particleAmountValue">?</span>)</label
+        <!-- Simulation Type Selector (Only Metaball & Repel) -->
+        <label class="control-label">Simulation Type:</label>
+        <div class="radio-group mb-3">
+          <div class="radio-option">
+            <input
+              type="radio"
+              id="simTypeMetaball"
+              name="simulationType"
+              value="metaball"
+              checked
+            />
+            <label for="simTypeMetaball">Metaball</label>
+          </div>
+          <div class="radio-option">
+            <input
+              type="radio"
+              id="simTypeLiquidRepel"
+              name="simulationType"
+              value="liquid repel"
+            />
+            <label for="simTypeLiquidRepel">Liquid Repel</label>
+          </div>
+        </div>
+
+        <!-- Shared Controls (Always Visible) -->
+        <div id="shared-controls">
+          <label for="particleAmount" class="control-label"
+            >Particle Amount (<span id="particleAmountValue">?</span>)</label
+          >
+          <input
+            type="range"
+            id="particleAmount"
+            min="1"
+            max="333"
+            value="50"
+          />
+          <!-- Max value MUST match MAX_PARTICLES -->
+
+          <label for="particleSize" class="control-label"
+            >Particle Size (<span id="particleSizeValue">?</span>)</label
+          >
+          <input
+            type="range"
+            id="particleSize"
+            min="1"
+            max="100"
+            step="0.5"
+            value="15"
+          />
+
+          <label for="particleSpeed" class="control-label"
+            >Particle Speed (<span id="particleSpeedValue">?</span>)</label
+          >
+          <input
+            type="range"
+            id="particleSpeed"
+            min="0.00"
+            max="0.5"
+            step="0.005"
+            value="0.01"
+          />
+
+          <label for="particleColor" class="control-label"
+            >Particle Color</label
+          >
+          <input type="color" id="particleColor" value="#FF3d23" />
+          <!-- Default value -->
+
+          <label for="backgroundColor" class="control-label"
+            >Background Color</label
+          >
+          <input type="color" id="backgroundColor" value="#edf7ee" />
+          <!-- Default value -->
+
+          <label for="boundaryRadius" class="control-label"
+            >Boundary Radius (<span id="boundaryRadiusValue">0.44</span>)</label
+          >
+          <input
+            type="range"
+            id="boundaryRadius"
+            min="0.1"
+            max="0.7"
+            step="0.01"
+            value="0.44"
+          />
+
+          <label for="canvasScale" class="control-label">
+            Canvas Scale / Zoom (<span id="canvasScaleValue">1.0</span>)
+          </label>
+          <input
+            type="range"
+            id="canvasScale"
+            min="0.5"
+            max="2.0"
+            step="0.05"
+            value="1.0"
+          />
+        </div>
+
+        <!-- Metaball/Repel Specific Controls -->
+        <div id="metaball-repel-controls" class="controls-set">
+          <hr class="my-4 border-gray-300" />
+          <h3 class="text-md font-semibold mb-2 text-gray-600">
+            Simulation Settings
+          </h3>
+
+          <label for="particleForce" class="control-label"
+            >Interaction Force (<span id="particleForceValue">0.5</span>)</label
+          >
+          <input
+            type="range"
+            id="particleForce"
+            min="-2"
+            max="2"
+            step="0.1"
+            value="0.5"
+          />
+
+          <label for="metaballThreshold" class="control-label"
+            >Visual Blending (<span id="metaballThresholdValue">0.6</span
+            >)</label
+          >
+          <input
+            type="range"
+            id="metaballThreshold"
+            min="0.1"
+            max="1.0"
+            step="0.01"
+            value="0.6"
+          />
+        </div>
+
+        <!-- Liquid Container Specific Controls (Keep structure but hide) -->
+        <div
+          id="liquid-container-controls"
+          class="controls-set controls-hidden"
         >
-        <input type="range" id="particleAmount" min="1" max="333" value="50" />
-        <!-- Max value MUST match MAX_PARTICLES -->
+          <hr class="my-4 border-gray-300" />
+          <h3 class="text-md font-semibold mb-2 text-gray-600">
+            Liquid Settings (Inactive)
+          </h3>
+        </div>
 
-        <label for="particleSize"
-          >Particle Size (<span id="particleSizeValue">?</span>)</label
-        >
-        <input
-          type="range"
-          id="particleSize"
-          min="1"
-          max="100"
-          step="0.5"
-          value="15"
-        />
+        <hr class="my-4 border-gray-300" />
 
-        <label for="particleSpeed"
-          >Particle Speed (<span id="particleSpeedValue">?</span>)</label
-        >
-        <input
-          type="range"
-          id="particleSpeed"
-          min="0.00"
-          max="0.5"
-          step="0.005"
-          value="0.01"
-        />
-
-        <label for="particleForce"
-          >Interaction Force (<span id="particleForceValue">?</span>)</label
-        >
-        <input
-          type="range"
-          id="particleForce"
-          min="-2"
-          max="2"
-          step="0.1"
-          value="0.2"
-        />
-
-        <label for="particleColor">Particle Color</label>
-        <input type="color" id="particleColor" value="#FF3d23" />
-        <!-- Default value -->
-
-        <label for="backgroundColor">Background Color</label>
-        <input type="color" id="backgroundColor" value="#edf7ee" />
-        <!-- Default value -->
-
-        <!-- Add controls for boundaryRadius and metaballThreshold if you want to adjust them -->
-        <!--
-        <label for="boundaryRadius">Boundary Radius (<span id="boundaryRadiusValue">?</span>)</label>
-        <input type="range" id="boundaryRadius" min="0.1" max="0.7" step="0.01" value="0.44" />
-
-        <label for="metaballThreshold">Metaball Threshold (<span id="metaballThresholdValue">?</span>)</label>
-        <input type="range" id="metaballThreshold" min="0.1" max="1.0" step="0.01" value="0.6" />
-        -->
-
+        <!-- Play/Stop Button -->
         <button id="playStopButton" class="control-button">Stop</button>
 
         <hr class="my-4 border-gray-300" />
 
+        <!-- Mode Management (Always visible) -->
         <h3 class="text-md font-semibold mb-2 text-gray-600">
-          Mode Management (Session Only)
+          Mode Management
         </h3>
         <p class="text-xs text-gray-500 mb-2">
-          Use controls above, then set the current state as a Mode.
+          Set current controls state as Mode A or B (session only).
         </p>
         <div class="mode-controls">
           <button id="setCurrentAsModeA" class="control-button set-button">
@@ -103,8 +191,8 @@
             Set Current as Mode B
           </button>
         </div>
-        <p class="text-xs text-gray-500 mt-1">
-          (These settings are temporary for this session unless saved below)
+        <p class="text-xs text-gray-500 mt-1 mb-2">
+          (Temporary unless saved below)
         </p>
 
         <hr class="my-4 border-gray-300" />

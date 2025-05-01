@@ -8,8 +8,6 @@ function initAYWCraftUI() {
       this.craftItems = document.querySelectorAll('.craft-readme-dynamic')
       this.closeButtons = document.querySelectorAll('.close-btn-wrapper')
       this.accordionTabs = document.querySelectorAll('.ayw-accordion-tab')
-      this.radioButtons = document.querySelectorAll('.ayw-radiobutt')
-      this.craftSummary = document.querySelector('[data-summary="craft"]')
 
       // Track last clicked icon
       this.lastClickedIcon = null
@@ -27,18 +25,12 @@ function initAYWCraftUI() {
       this.closeModal = this.closeModal.bind(this)
       this.initializeIconStates = this.initializeIconStates.bind(this)
       this.setLevelIndicators = this.setLevelIndicators.bind(this)
-      this.handleRadioButtonClick = this.handleRadioButtonClick.bind(this)
+      this.handleCraftSettingsUpdate = this.handleCraftSettingsUpdate.bind(this)
 
       // Initialize without any classes
       this.clearIconStates()
 
       this.init()
-
-      // Simulate click on first radio button after initialization
-      const firstRadioButton = this.radioButtons[0]
-      if (firstRadioButton) {
-        this.handleRadioButtonClick(firstRadioButton)
-      }
     }
 
     init() {
@@ -82,12 +74,14 @@ function initAYWCraftUI() {
         }
       })
 
-      // Add click listeners to radio buttons
-      this.radioButtons.forEach((button) => {
-        button.addEventListener('click', () =>
-          this.handleRadioButtonClick(button)
-        )
-      })
+      // Listen for custom event from DashboardController
+      document.addEventListener(
+        'craftSettingsChanged',
+        this.handleCraftSettingsUpdate
+      )
+
+      // Make instance accessible (simple global method)
+      window.aywCraftUIManager = this
     }
 
     initializeIconStates() {
@@ -117,6 +111,21 @@ function initAYWCraftUI() {
           icon.classList.add('init')
         }
       })
+
+      // Trigger initial icon states based on default radio selection (if any)
+      // Find the initially checked 'craft' radio button
+      const initialCraftRadio = document.querySelector(
+        '.ayw-radiobutt input[name="craft"]:checked'
+      )
+      const initialButtonType = initialCraftRadio
+        ? initialCraftRadio.closest('.ayw-radiobutt')?.dataset.button
+        : '1' // Default to '1' if none checked
+      this.updateIconStates(initialButtonType)
+      // Update levels after setting initial states
+      this.gridIcons.forEach((icon) => {
+        const levelName = icon.getAttribute('data-level')
+        this.setLevelIndicators(icon, levelName, false)
+      })
     }
 
     setLevelIndicators(icon, levelName, isActive) {
@@ -125,10 +134,9 @@ function initAYWCraftUI() {
 
       const indicators = icon.querySelectorAll('.ayw-level-indicator')
       const isGridIcon = icon.classList.contains('ayw-grid-icon-base')
-      const selectedButton = Array.from(this.radioButtons).find((btn) =>
-        btn.classList.contains('is-pressed')
-      )
-      const buttonType = selectedButton?.getAttribute('data-button')
+
+      // Get the currently selected button type for 'craft' group
+      const buttonType = this._getSelectedCraftButtonType()
       const isIconClicked = icon.classList.contains('any-clicked')
 
       indicators.forEach((indicator, index) => {
@@ -151,9 +159,11 @@ function initAYWCraftUI() {
               indicator.classList.add('is-on')
             }
           }
-        } else if (isActive && index < level) {
-          // Standard icon behavior - show levels up to current level when active
-          indicator.classList.add('is-on')
+        } else {
+          // Standard icon hover behavior unchanged
+          if (isActive && index < level) {
+            indicator.classList.add('is-on')
+          }
         }
 
         // Then handle inactive state (.is-off)
@@ -169,35 +179,25 @@ function initAYWCraftUI() {
       if (!craftId) return
 
       const levelName = clickedIcon.getAttribute('data-level')
+      const isActiveHover = false // Not hovering when clicking
 
       // If clicking the same icon that's currently open, close the modal
       if (
         clickedIcon === this.lastClickedIcon &&
         this.modal?.classList.contains('is-active')
       ) {
-        this.closeModal()
-        this.removeAnyClickedFromAllIcons()
-        this.setLevelIndicators(clickedIcon, levelName, false)
+        this.closeModal() // This now handles removing any-clicked and resetting levels
         return
       }
 
-      // Reset all icons (both grid and standard)
-      this.gridIcons.forEach((icon) => {
-        const iconLevelName = icon.getAttribute('data-level')
-        icon.classList.remove('any-clicked')
-        this.setLevelIndicators(icon, iconLevelName, false)
-      })
-      this.standardIcons.forEach((icon) => {
-        const iconLevelName = icon.getAttribute('data-level')
-        this.setLevelIndicators(icon, iconLevelName, false)
-        icon.classList.remove('stroke') // Remove stroke class from all standard icons
-      })
+      // --- Reset state BEFORE applying new state ---
+      this.removeAnyClickedFromAllIcons() // Handles grid and standard icons
 
       // Activate clicked icon and find its matching pair
       if (clickedIcon.classList.contains('ayw-grid-icon-base')) {
         clickedIcon.classList.add('any-clicked')
       }
-      this.setLevelIndicators(clickedIcon, levelName, true)
+      this.setLevelIndicators(clickedIcon, levelName, true) // Activate clicked icon's levels
 
       // Find and activate the matching icon
       const isGridIcon = clickedIcon.classList.contains('ayw-grid-icon-base')
@@ -210,14 +210,14 @@ function initAYWCraftUI() {
           )
 
       if (matchingIcon) {
-        // Only add any-clicked if it's a grid icon
+        const matchingLevelName = matchingIcon.getAttribute('data-level')
         if (matchingIcon.classList.contains('ayw-grid-icon-base')) {
           matchingIcon.classList.add('any-clicked')
         } else {
-          // Add stroke class if it's the standard icon
           matchingIcon.classList.add('stroke')
         }
-        this.setLevelIndicators(matchingIcon, levelName, true)
+        // Also update levels for the matching icon
+        this.setLevelIndicators(matchingIcon, matchingLevelName, true)
       }
 
       // Update last clicked icon
@@ -234,7 +234,7 @@ function initAYWCraftUI() {
       )
 
       if (matchingCraftItem) {
-        matchingCraftItem.style.display = 'flex'
+        matchingCraftItem.style.display = 'flex' // Or 'block', depending on layout needs
         this.modal?.classList.add('is-active')
       }
     }
@@ -244,25 +244,22 @@ function initAYWCraftUI() {
       this.gridIcons.forEach((icon) => {
         icon.classList.remove('any-clicked')
         const levelName = icon.getAttribute('data-level')
+        // Reset levels based on current radio button state, not just 'false'
         this.setLevelIndicators(icon, levelName, false)
       })
       // Reset level indicators and remove stroke class from standard icons
       this.standardIcons.forEach((icon) => {
-        const levelName = icon.getAttribute('data-level')
-        this.setLevelIndicators(icon, levelName, false)
         icon.classList.remove('stroke')
+        const levelName = icon.getAttribute('data-level')
+        this.setLevelIndicators(icon, levelName, false) // Standard icons only care about hover
       })
     }
 
     closeModal() {
       this.modal?.classList.remove('is-active')
-      // Reset last clicked icon when modal closes
-      if (this.lastClickedIcon) {
-        const levelName = this.lastClickedIcon.getAttribute('data-level')
-        this.setLevelIndicators(this.lastClickedIcon, levelName, false)
-      }
+      // Reset last clicked icon tracking
       this.lastClickedIcon = null
-      // Remove .any-clicked from all icons
+      // Remove .any-clicked from all icons and reset their level indicators
       this.removeAnyClickedFromAllIcons()
     }
 
@@ -274,78 +271,55 @@ function initAYWCraftUI() {
     }
 
     updateIconStates(buttonType) {
-      // Clear existing states
+      // Clear existing states first
       this.clearIconStates()
 
       this.gridIcons.forEach((icon) => {
         const packageType = icon.getAttribute('data-color')?.toLowerCase()
 
-        if (buttonType === '1') {
-          // Button 1: Only show initiation packages
-          if (packageType === 'initiation & dreamcaster') {
-            icon.classList.add('init')
-          }
-        } else if (buttonType === '2') {
-          // Button 2: Show both types
-          if (packageType === 'initiation & dreamcaster') {
-            icon.classList.add('init')
-          }
-          // Add selected class to dreamcaster icons
-          if (packageType === 'dreamcaster') {
-            icon.classList.add('selected')
-          }
+        // Add .init based on package type AND button selection
+        if (packageType === 'initiation & dreamcaster') {
+          icon.classList.add('init') // Always has 'init' if it's this type? Check design.
         }
+
+        // Add .selected only if dreamcaster type AND button 2 is selected
+        if (buttonType === '2' && packageType === 'dreamcaster') {
+          icon.classList.add('selected')
+        }
+
+        // Re-evaluate levels after changing classes
+        // const levelName = icon.getAttribute('data-level');
+        // this.setLevelIndicators(icon, levelName, false); // Done in handleCraftSettingsUpdate
       })
     }
 
-    handleRadioButtonClick(clickedButton) {
-      // Remove only the is-pressed state from all buttons
-      this.radioButtons.forEach((button) => {
-        button.classList.remove('is-pressed')
+    // --- New method to handle updates from the controller ---
+    handleCraftSettingsUpdate(event) {
+      console.log('Craft UI received craftSettingsChanged:', event.detail)
+      const { dataset } = event.detail
+      const buttonType = dataset?.button // Extract button type (e.g., '1' or '2')
 
-        // Update the Webflow radio input state
-        const radioInput = button.querySelector('.w-radio-input')
-        if (radioInput) {
-          radioInput.classList.remove('w--redirected-checked')
-        }
-      })
+      if (!buttonType) return
 
-      // Add is-pressed to the clicked button
-      clickedButton.classList.add('is-pressed')
-
-      // Update the Webflow radio input state for the clicked button
-      const clickedRadioInput = clickedButton.querySelector('.w-radio-input')
-      if (clickedRadioInput) {
-        clickedRadioInput.classList.add('w--redirected-checked')
-      }
-
-      // Get and update the summary text and classes
-      const radioInput = clickedButton.querySelector('input[type="radio"]')
-      if (radioInput && this.craftSummary) {
-        // Update text content
-        this.craftSummary.textContent = radioInput.value
-
-        // Remove both classes first
-        this.craftSummary.classList.remove('init', 'dream')
-
-        // Add appropriate class based on button type
-        const buttonType = clickedButton.getAttribute('data-button')
-        if (buttonType === '1') {
-          this.craftSummary.classList.add('init')
-        } else if (buttonType === '2') {
-          this.craftSummary.classList.add('dream')
-        }
-      }
-
-      // Update icon states based on selected button
-      const buttonType = clickedButton.getAttribute('data-button')
+      // 1. Update icon visual states (init, selected classes)
       this.updateIconStates(buttonType)
 
-      // Update level indicators for all grid icons
+      // 2. Update level indicators for all grid icons based on the new state
       this.gridIcons.forEach((icon) => {
         const levelName = icon.getAttribute('data-level')
+        // Pass false for isActive (hover), levels depend on buttonType now
         this.setLevelIndicators(icon, levelName, false)
       })
+    }
+
+    // Method to get the currently selected 'craft' button type
+    // This avoids relying on querying DOM every time, assuming controller keeps state or dispatches it
+    // For now, let's query when needed, or pass it from controller event
+    _getSelectedCraftButtonType() {
+      const selectedButton = document
+        .querySelector('.ayw-radiobutt.is-pressed input[name="craft"]')
+        ?.closest('.ayw-radiobutt')
+      return selectedButton?.getAttribute('data-button') || '1' // Default if none selected
     }
   }
 

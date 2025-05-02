@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orbit Animation</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <div id="container">
+      <!-- Controls Panel -->
+      <div id="controls">
+        <h2 class="text-lg font-semibold mb-4 text-gray-700">Orbit Controls</h2>
+
+        <!-- Sun -->
+        <label for="sunColor" class="control-label">Sun Color</label>
+        <input type="color" id="sunColor" value="#f6ff47" />
+
+        <!-- Sun Visibility (New) -->
+        <div class="mb-3">
+          <label class="control-label">Sun Visibility:</label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="sunEnabled"
+                name="sunVisible"
+                value="true"
+                checked
+              />
+              <label for="sunEnabled">Visible</label>
+            </div>
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="sunDisabled"
+                name="sunVisible"
+                value="false"
+              />
+              <label for="sunDisabled">Hidden</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Planet -->
+        <label for="planetColor" class="control-label">Planet Color</label>
+        <input type="color" id="planetColor" value="#607D8B" />
+
+        <!-- Moons -->
+        <div class="mb-3">
+          <label class="control-label">Moon 1:</label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="moon1Enabled"
+                name="moon1Visible"
+                value="true"
+                checked
+              />
+              <label for="moon1Enabled">Visible</label>
+            </div>
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="moon1Disabled"
+                name="moon1Visible"
+                value="false"
+              />
+              <label for="moon1Disabled">Hidden</label>
+            </div>
+          </div>
+        </div>
+
+        <label for="moon1Color" class="control-label">Moon 1 Color</label>
+        <input type="color" id="moon1Color" value="#FF5722" />
+
+        <div class="mb-3">
+          <label class="control-label">Moon 2:</label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="moon2Enabled"
+                name="moon2Visible"
+                value="true"
+                checked
+              />
+              <label for="moon2Enabled">Visible</label>
+            </div>
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="moon2Disabled"
+                name="moon2Visible"
+                value="false"
+              />
+              <label for="moon2Disabled">Hidden</label>
+            </div>
+          </div>
+        </div>
+
+        <label for="moon2Color" class="control-label">Moon 2 Color</label>
+        <input type="color" id="moon2Color" value="#2196F3" />
+
+        <!-- Speed -->
+        <label for="orbitSpeed" class="control-label"
+          >Orbit Speed (<span id="orbitSpeedValue">0.100</span>)</label
+        >
+        <input
+          type="range"
+          id="orbitSpeed"
+          min="1"
+          max="10"
+          step="1"
+          value="5"
+        />
+
+        <!-- NEW: Moon Speed Control -->
+        <label for="moonSpeed" class="control-label"
+          >Moons Speed (<span id="moonSpeedValue">0.400</span>)</label
+        >
+        <input
+          type="range"
+          id="moonSpeed"
+          min="1"
+          max="10"
+          step="1"
+          value="5"
+        />
+
+        <hr class="my-4 border-gray-300" />
+
+        <!-- NEW: Main Orbit Line Controls -->
+        <label for="mainOrbitColor" class="control-label"
+          >Main Orbit Color</label
+        >
+        <input type="color" id="mainOrbitColor" value="#d0e0e3" />
+
+        <div>
+          <label for="mainOrbitThickness"
+            >Orbit Line Thickness (<span id="mainOrbitThicknessValue">2</span
+            >)</label
+          >
+          <input
+            type="range"
+            id="mainOrbitThickness"
+            min="1"
+            max="6"
+            step="1"
+            value="2"
+          />
+        </div>
+
+        <hr class="my-4 border-gray-300" />
+
+        <!-- NEW: Delivery Day Settings -->
+        <h3 class="text-md font-medium mb-2 text-gray-600">
+          Delivery Day Settings
+        </h3>
+        <label class="control-label">Active Delivery Days:</label>
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          <div>
+            <input
+              type="checkbox"
+              id="dayMonday"
+              name="deliveryDay"
+              value="monday"
+              checked
+            />
+            <label for="dayMonday">Mon</label>
+          </div>
+          <div>
+            <input
+              type="checkbox"
+              id="dayTuesday"
+              name="deliveryDay"
+              value="tuesday"
+              checked
+            />
+            <label for="dayTuesday">Tue</label>
+          </div>
+          <div>
+            <input
+              type="checkbox"
+              id="dayWednesday"
+              name="deliveryDay"
+              value="wednesday"
+              checked
+            />
+            <label for="dayWednesday">Wed</label>
+          </div>
+          <div>
+            <input
+              type="checkbox"
+              id="dayThursday"
+              name="deliveryDay"
+              value="thursday"
+              checked
+            />
+            <label for="dayThursday">Thu</label>
+          </div>
+          <div>
+            <input
+              type="checkbox"
+              id="dayFriday"
+              name="deliveryDay"
+              value="friday"
+              checked
+            />
+            <label for="dayFriday">Fri</label>
+          </div>
+          <div>
+            <input
+              type="checkbox"
+              id="daySaturday"
+              name="deliveryDay"
+              value="saturday"
+              checked
+            />
+            <label for="daySaturday">Sat</label>
+          </div>
+        </div>
+
+        <label for="planetActiveColor" class="control-label"
+          >Planet Active Color</label
+        >
+        <input type="color" id="planetActiveColor" value="#ff0000" />
+
+        <!-- NEW: Day Mark Color Control -->
+        <label for="dayMarkColor" class="control-label">Day Mark Color</label>
+        <input type="color" id="dayMarkColor" value="#d1e7de" />
+        <!-- End Delivery Day Settings -->
+
+        <hr class="my-4 border-gray-300" />
+
+        <!-- Radar Signal -->
+        <div class="mb-3">
+          <label class="control-label">Radar Visibility:</label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="radarAlways"
+                name="radarVisibilityMode"
+                value="always"
+                checked
+              />
+              <label for="radarAlways">Always Visible</label>
+            </div>
+            <div class="radio-option">
+              <input
+                type="radio"
+                id="radarActiveDays"
+                name="radarVisibilityMode"
+                value="activeDays"
+              />
+              <label for="radarActiveDays">Visible on Active Days</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- NEW: Radar Signal Line Controls -->
+        <label for="radarColor" class="control-label">Radar Signal Color</label>
+        <input type="color" id="radarColor" value="#a0a0a0" />
+
+        <label for="radarThickness" class="control-label"
+          >Radar Signal Thickness (<span id="radarThicknessValue">1</span
+          >)</label
+        >
+        <input
+          type="range"
+          id="radarThickness"
+          min="1"
+          max="5"
+          step="1"
+          value="1"
+        />
+
+        <!-- Play/Stop Button -->
+        <hr class="my-4 border-gray-300" />
+        <button id="playStopButton" class="control-button">Stop</button>
+      </div>
+
+      <!-- Canvas will be created here by orbit.js -->
+    </div>
+
+    <!-- Importmap (if needed) -->
+    <!-- <script type="importmap"> ... </script> -->
+
+    <!-- Link the orbit JavaScript module -->
+    <script type="module">
+      import { createOrbitScene } from './orbit.js'
+
+      // Initialize
+      const container = document.getElementById('container')
+      if (container) {
+        createOrbitScene(container) // Pass the container
+      } else {
+        console.error('Orbit HTML: Main container #container not found!')
+      }
+    </script>
+  </body>
+</html>

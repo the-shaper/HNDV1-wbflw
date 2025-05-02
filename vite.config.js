@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import eslintPlugin from 'vite-plugin-eslint'
+import path from 'path'
 
 // vite.config.js
 export default defineConfig({
@@ -28,5 +29,16 @@ export default defineConfig({
       },
       external: ['jquery'],
     },
+  },
+  resolve: {
+    alias: [
+      {
+        find: /^three$/,
+        replacement: path.resolve(
+          __dirname,
+          'node_modules/three/build/three.module.js'
+        ),
+      },
+    ],
   },
 })

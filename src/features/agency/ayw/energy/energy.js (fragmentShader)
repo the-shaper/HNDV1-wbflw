@@ -1,0 +1,44 @@
+void main() {
+    vec2 center = vec2(0.5);
+    vec2 uv = gl_FragCoord.xy / resolution.xy; // Screen coordinates
+    
+    vec2 scaledUV = (uv - center) / canvasScale + center;
+    
+    // Output transparent background if outside bounds
+    if(scaledUV.x < 0.0 || scaledUV.x > 1.0 || scaledUV.y < 0.0 || scaledUV.y > 1.0) {
+        gl_FragColor = vec4(backgroundColor, 0.0); // Alpha 0.0
+        return;
+    }
+    
+    float distFromCenter = distance(scaledUV, center);
+    // Output transparent background if outside visual radius
+     if (distFromCenter > boundaryRadius + 0.05) {
+         gl_FragColor = vec4(backgroundColor, 0.0); // Alpha 0.0
+         return;
+     }
+
+    float totalInfluence = 0.0;
+    for (int i = 0; i < ${MAX_PARTICLES}; ++i) {
+        if (i >= particleCount) break; 
+
+        vec2 particleScreenPos = (particlePositions[i] * 0.5) + 0.5;
+        float distSq = dot(scaledUV - particleScreenPos, scaledUV - particleScreenPos);
+        float radius = particleSizes[i] / resolution.y; 
+        float radiusSq = radius * radius;
+
+        if (radiusSq < 0.00001) continue;
+
+        totalInfluence += exp(-distSq / (radiusSq * 0.5));
+    }
+
+    float intensity = smoothstep(threshold - 0.01, threshold + 0.01, totalInfluence);
+    vec3 color = mix(backgroundColor, particleColor, intensity);
+
+    // --- Calculate Alpha ---
+    // Use the intensity itself as alpha.
+    // Background areas (intensity=0) will be transparent.
+    // Metaball areas (intensity=1) will be opaque.
+    float alpha = intensity; 
+
+    gl_FragColor = vec4(color, alpha); // Use calculated alpha
+} 

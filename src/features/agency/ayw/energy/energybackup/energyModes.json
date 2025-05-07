@@ -1,0 +1,26 @@
+{
+  "A": {
+    "particleAmount": 22,
+    "particleSize": 69.3,
+    "particleSpeed": 0.022,
+    "particleForce": 0.39,
+    "particleColorHex": "#ff3d23",
+    "backgroundColorHex": "#edf7ee",
+    "boundaryRadius": 0.4,
+    "metaballThreshold": 0.9,
+    "simulationType": "metaball",
+    "canvasScale": 2
+  },
+  "B": {
+    "particleAmount": 69,
+    "particleSize": 33.3,
+    "particleSpeed": 0.03,
+    "particleForce": 0.33,
+    "particleColorHex": "#246dff",
+    "backgroundColorHex": "#edf7ee",
+    "boundaryRadius": 0.5,
+    "metaballThreshold": 0.8,
+    "simulationType": "metaball",
+    "canvasScale": 1.8
+  }
+}

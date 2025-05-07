@@ -2,6 +2,18 @@ import * as THREE from 'three'
 // --- Import JSON data directly ---
 // Vite will handle loading this JSON during the build/module load
 import modesDataFromFile from './energyModes.json'
+// --- Import Orbit Functions ---
+import {
+  initializeOrbit,
+  updateOrbitAnimation,
+  renderOrbitScene,
+  updateOrbitParameters as updateOrbitModuleParameters,
+  // --- NEW: Import speed calculation helpers ---
+  calculateActualPlanetSpeed,
+  calculatePlanetSliderValue,
+  calculateActualMoonSpeed,
+  calculateMoonSliderValue,
+} from './orbit.js'
 
 let scene, camera, renderer
 let particles = []
@@ -11,12 +23,15 @@ let metaballMaterial
 let particlePositionsUniform
 let particleSizesUniform
 let metaballQuad
+// --- Add Orbit Visibility Flag ---
+let isOrbitLayerVisible = false // Default to hidden
 
 // --- Maximum Particles Constant ---
 const MAX_PARTICLES = 333 // Define the pre-allocated maximum
 
 // Default simulation parameters (Add new liquid params)
 let defaultParams = {
+  // --- Energy Simulation ---
   simulationType: 'metaball',
   particleAmount: 111,
   particleSize: 25.0,
@@ -24,15 +39,47 @@ let defaultParams = {
   particleColorHex: '#FF3d23',
   backgroundColorHex: '#edf7ee',
   boundaryRadius: 0.44,
-  canvasSize: 800,
+  canvasSize: 800, // Note: canvasSize is shared, ensure consistency if needed
   canvasScale: 1.0, // Default scale of 100%
   // --- Type Specific ---
   particleForce: 0.5,
   metaballThreshold: 0.6,
+  // --- Orbit Layer Visibility (Keep this separate for the toggle) ---
+  orbitVisible: false, // Default visibility for the layer itself
+
+  // --- NEW: Default Orbit Parameters ---
+  showSun: true,
+  sunColor: '#f6ff47', // Converted from 0xf6ff47
+  planetColor: '#607d8b', // Converted from 0x607d8b
+  showMoon1: true,
+  moon1Color: '#ff3d23', // Converted from 0xff3d23
+  showMoon2: true,
+  moon2Color: '#0189d7', // Converted from 0x0189d7
+  orbitSpeed: 0.1, // Planet speed
+  moonOrbitSpeed: 0.4, // Moon speed
+  mainOrbitColor: '#d1e7de', // Converted from 0xd1e7de
+  mainOrbitThickness: 6,
+  radarColor: '#a0a0a0', // Converted from 0xa0a0a0
+  radarThickness: 1,
+  activeDeliveryDays: {
+    monday: false,
+    tuesday: true,
+    wednesday: false,
+    thursday: false,
+    friday: true,
+    saturday: false,
+  },
+  planetActiveColor: '#eeff00', // Converted from 0xeeff00
+  radarVisibilityMode: 'activeDays', // 'always' or 'activeDays'
+  dayMarkColor: '#d1e7de', // Converted from 0xd1e7de
+  radarFlowDirection: 'inward', // Default flow direction
+  radarAnimationSpeed: 0.6, // Default radar animation speed
+  radarSetsPerDay: 1, // Default sets per day
 }
 
 // Active parameters for the *currently controlled/previewed* instance (e.g., on energy.html)
 // This will be updated by controls or loading modes.
+// Initialize with the now extended defaults
 let activeParams = { ...defaultParams }
 
 // Object to hold the loaded modes. Initialize with data from the import.
@@ -53,31 +100,111 @@ function loadModes() {
     savedModes = modesDataFromFile
     console.log('Successfully loaded modes from import:', savedModes)
     const ensureModeDefaults = (modeKey) => {
-      if (!savedModes[modeKey]) {
+      const modeData = savedModes[modeKey]
+      if (!modeData) {
+        // If mode doesn't exist at all, create it from the extended defaults
         savedModes[modeKey] = { ...defaultParams }
+        console.log(
+          `Mode ${modeKey} not found in JSON, created from extended defaults.`
+        )
         return
       }
+      // Merge extended defaultParams into the loaded mode, ensuring all keys exist
       for (const key in defaultParams) {
-        if (savedModes[modeKey][key] === undefined) {
-          savedModes[modeKey][key] = defaultParams[key]
+        if (modeData[key] === undefined) {
+          modeData[key] = defaultParams[key]
+          console.log(
+            `Mode ${modeKey}: Added missing default for '${key}':`,
+            modeData[key]
+          )
         }
+        // --- Specific Type/Value Validations ---
+        else if (
+          key === 'activeDeliveryDays' &&
+          typeof modeData[key] !== 'object'
+        ) {
+          // Ensure activeDeliveryDays is an object
+          console.warn(
+            `Mode ${modeKey}: Correcting invalid 'activeDeliveryDays' to default object.`
+          )
+          modeData[key] = { ...defaultParams.activeDeliveryDays }
+        } else if (
+          (key === 'showSun' || key === 'showMoon1' || key === 'showMoon2') &&
+          typeof modeData[key] !== 'boolean'
+        ) {
+          // Ensure boolean visibility flags are boolean
+          console.warn(`Mode ${modeKey}: Correcting '${key}' to boolean.`)
+          modeData[key] = !!modeData[key] // Coerce to boolean
+        } else if (
+          key === 'radarVisibilityMode' &&
+          !['always', 'activeDays'].includes(modeData[key])
+        ) {
+          // Ensure valid radar visibility mode
+          console.warn(
+            `Mode ${modeKey}: Correcting invalid 'radarVisibilityMode' to default.`
+          )
+          modeData[key] = defaultParams.radarVisibilityMode
+        } else if (
+          // NEW: Add validation for radarFlowDirection
+          key === 'radarFlowDirection' &&
+          !['inward', 'outward'].includes(modeData[key])
+        ) {
+          console.warn(
+            `Mode ${modeKey}: Correcting invalid 'radarFlowDirection' to default.`
+          )
+          modeData[key] = defaultParams.radarFlowDirection
+        } else if (
+          // NEW: Add validation for radarAnimationSpeed
+          key === 'radarAnimationSpeed' &&
+          (typeof modeData[key] !== 'number' || isNaN(modeData[key]))
+        ) {
+          console.warn(
+            `Mode ${modeKey}: Correcting invalid 'radarAnimationSpeed' to default.`
+          )
+          modeData[key] = defaultParams.radarAnimationSpeed
+        } else if (
+          // NEW: Add validation for radarSetsPerDay
+          key === 'radarSetsPerDay' &&
+          (typeof modeData[key] !== 'number' ||
+            isNaN(modeData[key]) ||
+            modeData[key] < 0)
+        ) {
+          console.warn(
+            `Mode ${modeKey}: Correcting invalid 'radarSetsPerDay' to default.`
+          )
+          modeData[key] = defaultParams.radarSetsPerDay
+        }
+        // Add more specific validations for numbers, strings (colors) if needed
       }
-      const currentType = savedModes[modeKey].simulationType
+
+      // Ensure orbitVisible is a boolean (redundant check now handled above, but safe)
+      if (typeof modeData.orbitVisible !== 'boolean') {
+        modeData.orbitVisible = defaultParams.orbitVisible
+        console.warn(
+          `Mode ${modeKey}: Corrected 'orbitVisible' to boolean default:`,
+          modeData.orbitVisible
+        )
+      }
+
+      // Validate simulationType loaded from file
+      const currentType = modeData.simulationType
       if (!['metaball', 'liquid repel'].includes(currentType)) {
-        savedModes[modeKey].simulationType = defaultParams.simulationType
+        modeData.simulationType = defaultParams.simulationType
+        console.warn(
+          `Mode ${modeKey}: Corrected invalid simulationType to default:`,
+          modeData.simulationType
+        )
       }
     }
     ensureModeDefaults('A')
     ensureModeDefaults('B')
+    console.log('Final loaded modes after ensuring defaults:', savedModes)
   } catch (error) {
-    // This catch block is less likely to be hit for basic import issues,
-    // but good practice to keep for potential JSON parsing errors if file is malformed.
-    // Vite usually catches syntax errors during build.
     console.error('Failed to process imported energyModes.json:', error)
     console.warn(
       'Using default values for modes A and B as fallback due to processing error.'
     )
-    // Ensure A and B exist even if import processing failed somehow
+    // Ensure modes A and B exist, populated with extended defaults
     if (!savedModes.A) savedModes.A = { ...defaultParams }
     if (!savedModes.B) savedModes.B = { ...defaultParams }
   }
@@ -116,6 +243,7 @@ const fragmentShader = `
           
           // Check if scaled coordinates are outside the canvas (0-1 range)
           if(scaledUV.x < 0.0 || scaledUV.x > 1.0 || scaledUV.y < 0.0 || scaledUV.y > 1.0) {
+              // Use backgroundColor uniform for consistency
               gl_FragColor = vec4(backgroundColor, 1.0);
               return;
           }
@@ -124,13 +252,11 @@ const fragmentShader = `
           float distFromCenter = distance(scaledUV, center);
 
           // Discard fragments outside the circular boundary visually
-          // Note: This visual clipping might need adjustment for the 'liquid' mode if particles
-          // settle below the 0.5 center but are still within the intended play area.
-          // However, the actual physics boundary is handled in JS.
-          if (distFromCenter > boundaryRadius + 0.05) {
-              gl_FragColor = vec4(backgroundColor, 1.0);
-              return;
-          }
+          if (distFromCenter > boundaryRadius + 0.05) { // Add slight buffer
+               gl_FragColor = vec4(backgroundColor, 1.0); // Use background color
+               return;
+           }
+
 
           float totalInfluence = 0.0;
           // Loop up to MAX_PARTICLES
@@ -212,73 +338,64 @@ async function init(config = {}) {
     )
   }
 
-  // --- Determine Instance Parameters: Mode > Attributes > Defaults ---
+  // --- Determine Instance Parameters ---
   let instanceParams = { ...defaultParams } // Start with defaults
-  const modeAttribute = container.dataset.mode?.toUpperCase() // Check for data-mode="A" or data-mode="B"
+  // --- CHANGE THIS LINE ---
+  // const modeAttribute = container.dataset.mode?.toUpperCase(); // <<< OLD: Reads the "data-mode" attribute
+  const modeAttribute = (
+    container.dataset.setMode || container.dataset.mode
+  )?.toUpperCase()
+  console.log(
+    `Container ${currentConfig.containerSelector} data-set-mode/data-mode attribute:`,
+    modeAttribute
+  )
+  // --- END CHANGE ---
 
   if (modeAttribute && savedModes[modeAttribute]) {
-    // Mode found: Load settings from the saved mode
+    // Checks if data-set-mode was found AND matches a key in savedModes ('A' or 'B')
     console.log(
       `Container ${currentConfig.containerSelector} uses Mode: ${modeAttribute}`
     )
-    // Merge mode settings over defaults, ensuring type safety
-    instanceParams = { ...instanceParams, ...savedModes[modeAttribute] }
-    // Ensure simulationType is valid if loaded from mode
-    if (
-      instanceParams.simulationType !== 'metaball' &&
-      instanceParams.simulationType !== 'liquid repel'
-    ) {
-      console.warn(
-        `Invalid simulationType '${instanceParams.simulationType}' in Mode ${modeAttribute}. Defaulting to '${defaultParams.simulationType}'.`
-      )
-      instanceParams.simulationType = defaultParams.simulationType
-    }
+    // Load ALL params from the selected mode (including orbitVisible)
+    // Ensure defaults are merged in loadModes, so all keys should exist here
+    instanceParams = { ...savedModes[modeAttribute] } // Uses the mode from JSON if data-set-mode is valid
   } else {
-    // No valid mode attribute found, fall back to reading individual attributes
     console.log(
       `Container ${currentConfig.containerSelector} using individual attributes or defaults.`
     )
-    let attributeParams = readParametersFromDOM(container)
-    // Merge attribute settings over defaults
-    instanceParams = { ...instanceParams, ...attributeParams }
-    // Ensure simulationType is valid if loaded from attributes
-    if (
-      instanceParams.simulationType !== 'metaball' &&
-      instanceParams.simulationType !== 'liquid repel'
-    ) {
+    let attributeParams = readParametersFromDOM(container) // Read HTML attributes
+    // Merge attribute settings over defaults (orbitVisible from defaultParams used if not in attributes)
+    instanceParams = { ...defaultParams, ...attributeParams } // Uses defaults/other attributes if data-set-mode is missing/invalid
+
+    // Re-validate simulationType if read from attributes
+    if (!['metaball', 'liquid repel'].includes(instanceParams.simulationType)) {
       console.warn(
-        `Invalid simulationType '${instanceParams.simulationType}' from data attributes. Defaulting to '${defaultParams.simulationType}'.`
+        `Invalid simulationType '${instanceParams.simulationType}' from attributes, using default.`
       )
       instanceParams.simulationType = defaultParams.simulationType
     }
-  }
-
-  // Re-validate type and ensure all params exist
-  const type = instanceParams.simulationType
-  if (!['metaball', 'liquid repel'].includes(type)) {
-    instanceParams.simulationType = defaultParams.simulationType
-  }
-  for (const key in defaultParams) {
-    // Ensure all default keys exist after merges
-    if (instanceParams[key] === undefined) {
-      instanceParams[key] = defaultParams[key]
+    // Ensure orbitVisible is boolean if read from attributes (though unlikely)
+    if (typeof instanceParams.orbitVisible !== 'boolean') {
+      instanceParams.orbitVisible = defaultParams.orbitVisible
     }
   }
 
-  // --- Clamp initial particle amount from the chosen source (mode or attributes) ---
+  // Clamp particle amount (already done in loadModes/attribute reading usually, but good to double check)
   instanceParams.particleAmount = Math.max(
     1,
     Math.min(
       instanceParams.particleAmount || defaultParams.particleAmount,
       MAX_PARTICLES
-    ) // Clamp to max, ensure value exists
+    )
   )
+
+  // --- Set Initial Orbit Visibility based on determined instanceParams ---
+  // The instanceParams.orbitVisible now comes either from the JSON mode or the defaultParams
+  isOrbitLayerVisible = instanceParams.orbitVisible
   console.log(
-    `Instance ${currentConfig.containerSelector} - Initial particle amount set to: ${instanceParams.particleAmount} (clamped between 1 and ${MAX_PARTICLES})`
+    `Instance ${currentConfig.containerSelector} - Initial orbit visibility set to: ${isOrbitLayerVisible} (from instance params)`
   )
-  console.log(
-    `Instance ${currentConfig.containerSelector} - Initial simulation type: ${instanceParams.simulationType}`
-  )
+  // --- Remove the data-orbit-visible attribute reading logic ---
 
   // --- Initialize Global Uniform Arrays based on MAX_PARTICLES ---
   particlePositionsUniform = new Float32Array(MAX_PARTICLES * 2)
@@ -322,9 +439,95 @@ async function init(config = {}) {
   finalCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
   finalCamera.position.z = 1
 
-  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true })
-  renderer.setSize(instanceParams.canvasSize, instanceParams.canvasSize, false) // Render at fixed internal size
+  renderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    antialias: true,
+    alpha: true,
+  })
+  renderer.setSize(instanceParams.canvasSize, instanceParams.canvasSize, false)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+  // --- Extract Initial Orbit Params FIRST ---
+  const initialOrbitParams = {}
+  Object.keys(defaultParams).forEach((key) => {
+    // Exclude non-orbit keys
+    if (
+      ![
+        'simulationType',
+        'particleAmount',
+        'particleSize',
+        'particleSpeed',
+        'particleColorHex',
+        'backgroundColorHex',
+        'boundaryRadius',
+        'canvasSize',
+        'canvasScale',
+        'particleForce',
+        'metaballThreshold',
+        'orbitVisible',
+      ].includes(key) &&
+      instanceParams.hasOwnProperty(key)
+    ) {
+      // --- Convert colors back to numbers for orbit.js internal use ---
+      if (
+        [
+          'sunColor',
+          'planetColor',
+          'moon1Color',
+          'moon2Color',
+          'mainOrbitColor',
+          'radarColor',
+          'planetActiveColor',
+          'dayMarkColor',
+        ].includes(key) &&
+        typeof instanceParams[key] === 'string' &&
+        instanceParams[key].startsWith('#')
+      ) {
+        try {
+          initialOrbitParams[key] = new THREE.Color(
+            instanceParams[key]
+          ).getHex()
+        } catch (e) {
+          console.error(`Error converting color ${key}: ${instanceParams[key]}`)
+          // Optionally fallback to a default number color if conversion fails
+        }
+      } else {
+        initialOrbitParams[key] = instanceParams[key]
+      }
+    }
+  })
+  console.log(
+    `Instance ${currentConfig.containerSelector}: Extracted initial orbit params to send:`,
+    initialOrbitParams
+  )
+
+  // --- Initialize Orbit Module in Integration Mode ---
+  try {
+    // --- Pass initialOrbitParams to initializeOrbit ---
+    initializeOrbit({ existingRenderer: renderer }, initialOrbitParams)
+    console.log(
+      'Orbit module initialized by energy.js in integration mode with params.'
+    )
+
+    // --- REMOVE the separate update call, it's handled by initializeOrbit now ---
+    // if (Object.keys(initialOrbitParams).length > 0) {
+    //   updateOrbitModuleParameters(initialOrbitParams);
+    //   console.log(
+    //     `Instance ${currentConfig.containerSelector}: Initial orbit parameters set:`,
+    //     initialOrbitParams
+    //   );
+    // }
+  } catch (error) {
+    console.error('Failed to initialize orbit module:', error)
+    // If orbit fails, ensure the layer isn't treated as visible
+    isOrbitLayerVisible = false
+    // Also update instanceParams to reflect this failure state for the UI toggle
+    instanceParams.orbitVisible = false
+    if (activeParams === instanceParams) {
+      // If this instance was setting the activeParams, update it too
+      activeParams.orbitVisible = false
+    }
+  }
 
   // Create Initial Particles using the final instanceParams
   particles = createParticles(instanceParams)
@@ -362,12 +565,17 @@ async function init(config = {}) {
   // --- Final Quad to display render target ---
   const finalMaterial = new THREE.MeshBasicMaterial({
     map: renderTarget.texture,
+    // --- Add Transparency Settings ---
+    transparent: true, // Allow transparency
+    blending: THREE.NormalBlending, // Standard alpha blending
+    depthWrite: false, // Don't occlude things behind it
+    depthTest: false, // Draw regardless of depth buffer
+    // --- End Transparency Settings ---
   })
   finalQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), finalMaterial)
-  finalScene.add(finalQuad) // This is always added to finalScene
+  finalScene.add(finalQuad)
 
-  // Setup Controls - Pass the final instanceParams to set initial control values
-  // This is important for the energy.html configurator page
+  // Setup Controls - Pass the final instanceParams (now including full defaults/mode)
   setupControls(instanceParams)
 
   // Handle Window Resize
@@ -395,6 +603,13 @@ async function init(config = {}) {
       `Set activeParams based on initialization of: ${config.containerSelector}`
     )
   }
+
+  // Add in the init function around line ~326-328:
+  console.log(`Container ${currentConfig.containerSelector} attributes:`, {
+    'data-set-mode': container.dataset.setMode,
+    'data-mode': container.dataset.mode,
+    'all-data-attributes': { ...container.dataset },
+  })
 }
 
 // Apply CSS directly to container and canvas
@@ -461,6 +676,7 @@ function readParametersFromDOM(targetContainer) {
   attributeParams.particleColorHex = getStringParam('particleColor')
   attributeParams.backgroundColorHex = getStringParam('backgroundColor')
   attributeParams.boundaryRadius = getParam('boundaryRadius')
+  attributeParams.canvasScale = getParam('canvasScale') // Read canvasScale attribute
 
   // Filter out undefined values so they don't overwrite defaults unnecessarily
   Object.keys(attributeParams).forEach(
@@ -556,56 +772,118 @@ function createParticles(currentParams) {
 
 // Gets the current settings from the UI controls
 function getCurrentSettingsFromControls() {
-  const settings = { ...activeParams } // Start with current state to preserve inactive params
-  const getValue = (id, parser = parseFloat) => {
+  const settings = {} // Start empty, will be populated
+
+  // Helper to safely get element value
+  const getElementValue = (id) => {
     const element = document.getElementById(id)
-    // Ensure control exists before trying to read value
-    return element ? parser(element.value) : undefined
+    return element ? element.value : undefined
+  }
+  // Helper to get value and parse
+  const getValue = (id, parser = parseFloat) => {
+    const val = getElementValue(id)
+    return val !== undefined ? parser(val) : undefined
   }
   const getIntValue = (id) => getValue(id, parseInt)
   const getStringValue = (id) => getValue(id, String)
-  // Helper to get selected radio button value
-  const getRadioValue = (name) => {
+  const getBoolRadioValue = (name) => {
+    const checkedRadio = document.querySelector(`input[name="${name}"]:checked`)
+    return checkedRadio ? checkedRadio.value === 'true' : undefined
+  }
+  const getStringRadioValue = (name) => {
     const checkedRadio = document.querySelector(`input[name="${name}"]:checked`)
     return checkedRadio ? checkedRadio.value : undefined
   }
+  const getCheckboxValue = (id) => {
+    const element = document.getElementById(id)
+    return element ? element.checked : undefined
+  }
 
-  // Read directly from controls
-  const simTypeFromControl = getRadioValue('simulationType')
-  const amountFromControl = getIntValue('particleAmount')
-  const sizeFromControl = getValue('particleSize')
-  const speedFromControl = getValue('particleSpeed')
-  const forceFromControl = getValue('particleForce')
-  const particleColorFromControl = getStringValue('particleColor')
-  const backgroundColorFromControl = getStringValue('backgroundColor')
+  // --- Read Energy Controls ---
+  settings.simulationType = getStringRadioValue('simulationType')
+  settings.particleAmount = getIntValue('particleAmount')
+  settings.particleSize = getValue('particleSize')
+  settings.particleSpeed = getValue('particleSpeed')
+  settings.particleForce = getValue('particleForce')
+  settings.metaballThreshold = getValue('metaballThreshold')
+  settings.particleColorHex = getStringValue('particleColor')
+  settings.backgroundColorHex = getStringValue('backgroundColor')
+  settings.boundaryRadius = getValue('boundaryRadius')
+  settings.canvasScale = getValue('canvasScale')
+  settings.orbitVisible = getCheckboxValue('orbitLayerToggle')
 
-  // Use control value if available, otherwise fallback to the current activeParams
-  settings.simulationType = simTypeFromControl ?? activeParams.simulationType
-  settings.particleAmount = amountFromControl ?? activeParams.particleAmount
-  settings.particleSize = sizeFromControl ?? activeParams.particleSize
-  settings.particleSpeed = speedFromControl ?? activeParams.particleSpeed
-  settings.particleForce = forceFromControl ?? activeParams.particleForce
-  settings.particleColorHex =
-    particleColorFromControl ?? activeParams.particleColorHex
-  settings.backgroundColorHex =
-    backgroundColorFromControl ?? activeParams.backgroundColorHex
+  // --- Read Orbit Controls ---
+  settings.showSun = getBoolRadioValue('sunVisible')
+  settings.sunColor = getStringValue('sunColor')
+  settings.planetColor = getStringValue('planetColor')
+  settings.showMoon1 = getBoolRadioValue('moon1Visible')
+  settings.moon1Color = getStringValue('moon1Color')
+  settings.showMoon2 = getBoolRadioValue('moon2Visible')
+  settings.moon2Color = getStringValue('moon2Color')
 
-  // Add boundaryRadius and metaballThreshold if controls exist for them, otherwise use activeParams
-  const boundaryRadiusControl = getValue('boundaryRadius')
-  const thresholdControl = getValue('metaballThreshold')
-  settings.boundaryRadius = boundaryRadiusControl ?? activeParams.boundaryRadius
-  settings.metaballThreshold =
-    thresholdControl ?? activeParams.metaballThreshold
+  // Orbit/Moon Speed: Read slider value (1-10) and convert to actual speed
+  const orbitSliderVal = getIntValue('orbitSpeed')
+  if (orbitSliderVal !== undefined) {
+    settings.orbitSpeed = calculateActualPlanetSpeed(orbitSliderVal)
+  }
+  const moonSliderVal = getIntValue('moonSpeed')
+  if (moonSliderVal !== undefined) {
+    settings.moonOrbitSpeed = calculateActualMoonSpeed(moonSliderVal)
+  }
 
-  // Clamp amount again
-  settings.particleAmount = Math.max(
+  settings.mainOrbitColor = getStringValue('mainOrbitColor')
+  settings.mainOrbitThickness = getIntValue('mainOrbitThickness')
+  settings.radarColor = getStringValue('radarColor')
+  settings.radarThickness = getIntValue('radarThickness')
+
+  // Active Delivery Days: Construct object from checkboxes
+  const activeDays = {}
+  const dayCheckboxes = document.querySelectorAll('input[name="deliveryDay"]')
+  if (dayCheckboxes) {
+    dayCheckboxes.forEach((cb) => {
+      if (cb.value) {
+        activeDays[cb.value] = cb.checked
+      }
+    })
+    settings.activeDeliveryDays = activeDays
+  }
+
+  settings.planetActiveColor = getStringValue('planetActiveColor')
+  settings.dayMarkColor = getStringValue('dayMarkColor')
+  settings.radarVisibilityMode = getStringRadioValue('radarVisibilityMode')
+  settings.radarFlowDirection = getStringRadioValue('radarFlowDirection')
+  settings.radarAnimationSpeed = getValue('radarAnimationSpeed')
+  settings.radarSetsPerDay = getIntValue('radarSetsPerDay') // Read new control
+
+  // --- Final Cleanup & Defaults ---
+  // Start with defaults, then layer the direct control readings over them.
+  // This avoids potential issues with stale activeParams for orbit values.
+  const finalSettings = {
+    ...defaultParams, // Load defaults first
+    ...settings, // OVERWRITE with values read directly from controls
+  }
+
+  // Ensure required values that might not have controls exist (belt-and-suspenders)
+  // (e.g., canvasSize if there's no direct control for it)
+  finalSettings.canvasSize =
+    finalSettings.canvasSize ?? defaultParams.canvasSize
+
+  // Clamp amount again after potential reads/merges
+  finalSettings.particleAmount = Math.max(
     1,
-    Math.min(settings.particleAmount, MAX_PARTICLES)
+    Math.min(
+      finalSettings.particleAmount ?? defaultParams.particleAmount, // Use nullish coalescing
+      MAX_PARTICLES
+    )
   )
-  // Add clamping/validation for other values if needed
 
-  console.log('Got current settings from controls:', settings)
-  return settings
+  // Remove undefined values before returning? Optional.
+  Object.keys(finalSettings).forEach(
+    (key) => finalSettings[key] === undefined && delete finalSettings[key]
+  )
+
+  console.log('Got current settings from controls:', finalSettings)
+  return finalSettings
 }
 
 // Triggers a download of the modes JSON
@@ -661,7 +939,7 @@ function setCurrentSettingsAsMode(modeId) {
     return
   }
   const currentSettings = getCurrentSettingsFromControls()
-  // Ensure simulationType is captured and valid (allow all 3 types)
+  // Ensure simulationType is captured and valid
   if (
     !currentSettings.simulationType ||
     (currentSettings.simulationType !== 'metaball' &&
@@ -676,30 +954,87 @@ function setCurrentSettingsAsMode(modeId) {
   savedModes[modeId] = currentSettings // Update the mode in memory
   console.log(`Mode ${modeId} set in session memory:`, savedModes[modeId])
   alert(`Mode ${modeId} configuration updated for this session.`)
-  // Optional: Update activeParams to reflect the saved state
-  // window.updateEnergySimulation(currentSettings); // Could call API to ensure consistency
 }
 
 // Loads a mode from memory into the preview and UI controls
 function loadModeToPreview(modeId) {
   if (!modeId || !savedModes[modeId]) {
     console.error(`Mode "${modeId}" not found in savedModes memory.`)
-    alert(
-      `Error: Mode "${modeId}" has not been set in this session or loaded from file.`
-    )
-    return
+    return // Removed alert as console error is sufficient
   }
   console.log(`Loading Mode ${modeId} to preview and controls...`)
+
+  // Ensure the mode data is fully populated with the extended defaults
   const modeSettings = { ...defaultParams, ...savedModes[modeId] }
 
-  // Call API first
-  window.updateEnergySimulation(modeSettings)
+  // Call API first to update the *energy* simulation state and orbit visibility flag
+  window.updateEnergySimulation(modeSettings) // Pass the full settings
 
-  // --- Update UI controls AFTER API call ---
+  // We need to force a direct update to orbit parameters
+  console.log('Forcing explicit orbit parameter update from loaded mode...')
+  const orbitSpecificParams = extractOrbitParams(modeSettings)
+  if (Object.keys(orbitSpecificParams).length > 0) {
+    // Add an immediate timeout to ensure this runs after the energy update
+    setTimeout(() => {
+      console.log(
+        'Applying orbit parameters with forced update:',
+        orbitSpecificParams
+      )
+      updateOrbitModuleParameters(orbitSpecificParams)
+    }, 10)
+  }
+
+  // --- NEW: Call Orbit API to update the orbit simulation state ---
+  // Extract only the orbit-specific parameters to pass to its update function
+  const orbitParamsToUpdate = {}
+  Object.keys(defaultParams).forEach((key) => {
+    // Exclude energy-specific keys and the visibility toggle itself
+    if (
+      ![
+        'simulationType',
+        'particleAmount',
+        'particleSize',
+        'particleSpeed',
+        'particleColorHex',
+        'backgroundColorHex',
+        'boundaryRadius',
+        'canvasSize',
+        'canvasScale',
+        'particleForce',
+        'metaballThreshold',
+        'orbitVisible',
+      ].includes(key)
+    ) {
+      // Check if the key exists in modeSettings (it should, due to ensureModeDefaults)
+      if (modeSettings.hasOwnProperty(key)) {
+        orbitParamsToUpdate[key] = modeSettings[key]
+      }
+    }
+  })
+  if (Object.keys(orbitParamsToUpdate).length > 0) {
+    updateOrbitModuleParameters(orbitParamsToUpdate) // Use the imported function
+    console.log(
+      'Orbit parameters updated from loaded mode:',
+      orbitParamsToUpdate
+    )
+  }
+  // --- End Orbit API Call ---
+
+  // --- Update UI controls AFTER API calls ---
+  const orbitLayerToggle = document.getElementById('orbitLayerToggle') // Get toggle ref
+
+  // --- Keep existing helper functions ---
   const updateControl = (id, value) => {
     const control = document.getElementById(id)
     if (control) {
-      control.value = value
+      // Special handling for checkboxes (like delivery days)
+      if (control.type === 'checkbox') {
+        control.checked = !!value // Convert to boolean
+      } else {
+        control.value = value
+      }
+    } else {
+      // console.warn(`UI Update: Control with ID '${id}' not found.`);
     }
   }
   const updateRadioControl = (name, value) => {
@@ -709,61 +1044,257 @@ function loadModeToPreview(modeId) {
     if (radioToCheck) {
       radioToCheck.checked = true
     } else {
-      console.warn(
-        `Could not find radio button for name "${name}" with value "${value}"`
-      )
+      // console.warn(`UI Update: Could not find radio button for name "${name}" with value "${value}"`);
     }
   }
-  const getVal = (key) => modeSettings[key] // Use merged settings
+  // Helper for setting range slider + value display
+  const updateSliderAndDisplay = (sliderId, displayId, value) => {
+    updateControl(sliderId, value)
+    updateValueDisplay(displayId, value) // Use existing value display helper
+  }
+  // --- End Helpers ---
 
-  // Update type radio
-  updateRadioControl('simulationType', getVal('simulationType'))
+  const getVal = (key) => modeSettings[key] // Use the fully merged modeSettings
 
-  // Update SHARED controls & displays
-  updateControl('particleAmount', getVal('particleAmount'))
-  updateValueDisplay('particleAmountValue', getVal('particleAmount'))
-  updateControl('particleSize', getVal('particleSize'))
-  updateValueDisplay('particleSizeValue', getVal('particleSize'))
-  updateControl('particleSpeed', getVal('particleSpeed'))
-  updateValueDisplay('particleSpeedValue', getVal('particleSpeed'))
+  // ... update energy simulation controls ...
+  updateSliderAndDisplay(
+    'particleAmount',
+    'particleAmountValue',
+    getVal('particleAmount')
+  )
+  updateSliderAndDisplay(
+    'particleSize',
+    'particleSizeValue',
+    getVal('particleSize')
+  )
+  updateSliderAndDisplay(
+    'particleSpeed',
+    'particleSpeedValue',
+    getVal('particleSpeed')
+  )
   updateControl('particleColor', getVal('particleColorHex'))
   updateControl('backgroundColor', getVal('backgroundColorHex'))
-  updateControl('boundaryRadius', getVal('boundaryRadius'))
-  updateValueDisplay('boundaryRadiusValue', getVal('boundaryRadius'))
+  updateSliderAndDisplay(
+    'boundaryRadius',
+    'boundaryRadiusValue',
+    getVal('boundaryRadius')
+  )
+  updateSliderAndDisplay(
+    'canvasScale',
+    'canvasScaleValue',
+    getVal('canvasScale')
+  )
+  updateSliderAndDisplay(
+    'particleForce',
+    'particleForceValue',
+    getVal('particleForce')
+  )
+  updateSliderAndDisplay(
+    'metaballThreshold',
+    'metaballThresholdValue',
+    getVal('metaballThreshold')
+  )
 
-  // Update TYPE-SPECIFIC controls & displays
-  updateControl('particleForce', getVal('particleForce'))
-  updateValueDisplay('particleForceValue', getVal('particleForce'))
-  updateControl('metaballThreshold', getVal('metaballThreshold'))
-  updateValueDisplay('metaballThresholdValue', getVal('metaballThreshold'))
+  // --- Update Orbit Layer Toggle UI ---
+  if (orbitLayerToggle) {
+    orbitLayerToggle.checked = getVal('orbitVisible')
+  }
 
-  console.log(`Mode ${modeId} loaded into controls.`)
+  // --- NEW: Update Orbit Controls UI ---
+  updateControl('sunColor', getVal('sunColor'))
+  updateRadioControl('sunVisible', String(getVal('showSun'))) // Convert boolean to string for radio value
+  updateControl('planetColor', getVal('planetColor'))
+  updateRadioControl('moon1Visible', String(getVal('showMoon1')))
+  updateControl('moon1Color', getVal('moon1Color'))
+  updateRadioControl('moon2Visible', String(getVal('showMoon2')))
+  updateControl('moon2Color', getVal('moon2Color'))
+
+  // --- CORRECTED: Update Orbit Speed Sliders & Displays ---
+  const orbitSpeedSlider = document.getElementById('orbitSpeed')
+  const orbitSpeedValueSpan = document.getElementById('orbitSpeedValue')
+  if (orbitSpeedSlider && orbitSpeedValueSpan) {
+    const actualOrbitSpeed = getVal('orbitSpeed')
+    const sliderOrbitValue = calculatePlanetSliderValue(actualOrbitSpeed) // Calculate 1-10 value
+    updateControl(orbitSpeedSlider.id, sliderOrbitValue) // Set slider value (1-10)
+    updateValueDisplay(orbitSpeedValueSpan.id, actualOrbitSpeed, 3) // Set display text (actual speed)
+  }
+
+  const moonSpeedSlider = document.getElementById('moonSpeed')
+  const moonSpeedValueSpan = document.getElementById('moonSpeedValue')
+  if (moonSpeedSlider && moonSpeedValueSpan) {
+    const actualMoonSpeed = getVal('moonOrbitSpeed')
+    const sliderMoonValue = calculateMoonSliderValue(actualMoonSpeed) // Calculate 1-10 value
+    updateControl(moonSpeedSlider.id, sliderMoonValue) // Set slider value (1-10)
+    updateValueDisplay(moonSpeedValueSpan.id, actualMoonSpeed, 3) // Set display text (actual speed)
+  }
+  // --- End Corrected Speed Sliders ---
+
+  updateControl('mainOrbitColor', getVal('mainOrbitColor'))
+  updateSliderAndDisplay(
+    'mainOrbitThickness',
+    'mainOrbitThicknessValue',
+    getVal('mainOrbitThickness')
+  )
+  updateControl('radarColor', getVal('radarColor'))
+  updateSliderAndDisplay(
+    'radarThickness',
+    'radarThicknessValue',
+    getVal('radarThickness')
+  )
+
+  // Update Delivery Day Checkboxes
+  const deliveryDays = getVal('activeDeliveryDays') || {}
+  Object.keys(deliveryDays).forEach((day) => {
+    const checkboxId = `day${day.charAt(0).toUpperCase() + day.slice(1)}` // e.g., dayMonday
+    updateControl(checkboxId, deliveryDays[day])
+  })
+
+  updateControl('planetActiveColor', getVal('planetActiveColor'))
+  updateControl('dayMarkColor', getVal('dayMarkColor'))
+  updateRadioControl('radarVisibilityMode', getVal('radarVisibilityMode'))
+  // NEW: Update radar flow direction UI
+  updateRadioControl('radarFlowDirection', getVal('radarFlowDirection'))
+  // NEW: Update radar animation speed UI
+  updateSliderAndDisplay(
+    'radarAnimationSpeed',
+    'radarAnimationSpeedValue',
+    getVal('radarAnimationSpeed')
+  )
+  // NEW: Update radar sets per day UI
+  updateSliderAndDisplay(
+    'radarSetsPerDay',
+    'radarSetsPerDayValue',
+    getVal('radarSetsPerDay')
+  )
+  // --- End Orbit Controls UI Update ---
+
+  console.log(`Mode ${modeId} loaded into controls and simulations.`)
+
+  // Force orbit visibility if the mode has it enabled
+  if (modeSettings.orbitVisible) {
+    isOrbitLayerVisible = true
+    console.log(`Forcing orbit layer visibility to true for mode ${modeId}`)
+  }
 }
 
 // Saves the entire `savedModes` object (containing A & B from memory) to a file
 function saveAllModes() {
   console.log('Saving all modes (A & B) from memory to file...')
 
-  // Ensure both modes have a valid simulationType before saving
-  const checkAndSetDefaultType = (mode) => {
-    if (!mode) return
-    if (
-      mode.simulationType === undefined ||
-      (mode.simulationType !== 'metaball' &&
-        mode.simulationType !== 'liquid repel')
-    ) {
-      mode.simulationType = defaultParams.simulationType // Use global default
-      console.warn(
-        `Added/corrected missing/invalid simulationType to Mode during save.`
-      )
+  // Helper to ensure necessary properties exist before saving
+  const ensureProperties = (mode) => {
+    // Start with a fresh copy of extended defaults
+    let validatedMode = { ...defaultParams }
+    // Merge the potentially incomplete 'mode' data over the defaults
+    if (mode) {
+      validatedMode = { ...validatedMode, ...mode }
     }
+
+    // Now, iterate through the combined object and perform specific validations
+    for (const key in validatedMode) {
+      if (!defaultParams.hasOwnProperty(key)) continue // Skip keys not in defaults
+
+      const defaultValue = defaultParams[key]
+      const currentValue = validatedMode[key]
+      const defaultType = typeof defaultValue
+      const currentType = typeof currentValue
+
+      // Basic Type Check (if not undefined/null)
+      if (
+        currentValue !== undefined &&
+        currentValue !== null &&
+        defaultType !== 'object' && // Skip objects like activeDeliveryDays for this simple check
+        currentType !== defaultType
+      ) {
+        console.warn(
+          `Save Validation: Correcting type mismatch for '${key}'. Expected ${defaultType}, got ${currentType}. Resetting to default.`
+        )
+        validatedMode[key] = defaultValue
+        continue // Move to next key after resetting
+      }
+
+      // Specific Validations (add more as needed)
+      if (
+        key === 'simulationType' &&
+        !['metaball', 'liquid repel'].includes(currentValue)
+      ) {
+        validatedMode[key] = defaultValue
+        console.warn('Save Validation: Corrected invalid simulationType.')
+      } else if (key === 'orbitVisible' && currentType !== 'boolean') {
+        validatedMode[key] = defaultValue
+        console.warn('Save Validation: Corrected invalid orbitVisible.')
+      } else if (
+        (key === 'showSun' || key === 'showMoon1' || key === 'showMoon2') &&
+        currentType !== 'boolean'
+      ) {
+        validatedMode[key] = defaultValue
+        console.warn(`Save Validation: Corrected invalid ${key}.`)
+      } else if (
+        key === 'radarVisibilityMode' &&
+        !['always', 'activeDays'].includes(currentValue)
+      ) {
+        validatedMode[key] = defaultValue
+        console.warn('Save Validation: Corrected invalid radarVisibilityMode.')
+      } else if (
+        // NEW: Add validation for radarFlowDirection before saving
+        key === 'radarFlowDirection' &&
+        !['inward', 'outward'].includes(currentValue)
+      ) {
+        validatedMode[key] = defaultValue
+        console.warn('Save Validation: Corrected invalid radarFlowDirection.')
+      } else if (
+        // NEW: Add validation for radarAnimationSpeed before saving
+        key === 'radarAnimationSpeed' &&
+        (typeof currentValue !== 'number' || isNaN(currentValue))
+      ) {
+        validatedMode[key] = defaultValue
+        console.warn('Save Validation: Corrected invalid radarAnimationSpeed.')
+      } else if (
+        // NEW: Add validation for radarSetsPerDay before saving
+        key === 'radarSetsPerDay' &&
+        (typeof currentValue !== 'number' ||
+          isNaN(currentValue) ||
+          currentValue < 0)
+      ) {
+        validatedMode[key] = defaultValue
+        console.warn('Save Validation: Corrected invalid radarSetsPerDay.')
+      } else if (
+        key === 'activeDeliveryDays' &&
+        (currentType !== 'object' || currentValue === null)
+      ) {
+        // Ensure it's a non-null object
+        validatedMode[key] = { ...defaultValue } // Deep copy default object
+        console.warn('Save Validation: Corrected invalid activeDeliveryDays.')
+      } else if (key === 'activeDeliveryDays') {
+        // Further check object structure if needed (ensure all days exist)
+        const defaultDays = Object.keys(defaultValue)
+        let daysOk = true
+        for (const day of defaultDays) {
+          if (typeof currentValue[day] !== 'boolean') {
+            daysOk = false
+            break
+          }
+        }
+        if (!daysOk) {
+          validatedMode[key] = { ...defaultValue }
+          console.warn(
+            'Save Validation: Corrected invalid structure within activeDeliveryDays.'
+          )
+        }
+      }
+      // Add checks for number ranges (thickness, speed, etc.) if strict validation is desired
+    }
+    return validatedMode // Return the validated mode object
   }
 
-  checkAndSetDefaultType(savedModes.A)
-  checkAndSetDefaultType(savedModes.B)
+  // Prepare modes for saving, ensuring required fields are present and valid
+  const modesToSave = {
+    A: ensureProperties(savedModes.A), // Pass potentially existing mode data
+    B: ensureProperties(savedModes.B),
+  }
 
-  // Convert the *current* savedModes object
-  const jsonContent = JSON.stringify(savedModes, null, 2) // Pretty print
+  // Convert the *prepared* modes object to JSON
+  const jsonContent = JSON.stringify(modesToSave, null, 2) // Pretty print
 
   // Trigger the download
   triggerFileDownload('energyModes.json', jsonContent)
@@ -774,8 +1305,18 @@ function saveAllModes() {
 
 // --- Control Setup ---
 function setupControls(initialParams) {
+  // --- ADD LOG 1 ---
+  console.log(
+    '--- Running setupControls for parameters: ---',
+    JSON.parse(JSON.stringify(initialParams))
+  ) // Log a copy to avoid large object logging issues
+
   const controlsContainer = document.getElementById('controls')
   if (!controlsContainer) {
+    // Add more specific logging
+    console.error(
+      'setupControls ERROR: Controls container "#controls" not found! Listeners cannot be attached.'
+    )
     return // Exit if controls don't exist
   }
 
@@ -811,45 +1352,236 @@ function setupControls(initialParams) {
   // Get reference to new control
   const canvasScaleSlider = document.getElementById('canvasScale')
   const canvasScaleValue = document.getElementById('canvasScaleValue')
+  // --- NEW: Get reference to Orbit Toggle ---
+  const orbitLayerToggle = document.getElementById('orbitLayerToggle')
 
+  // --- NEW: Get references to Orbit Controls ---
+  const sunColorPicker = document.getElementById('sunColor')
+  const sunVisibleRadios = document.querySelectorAll('input[name="sunVisible"]')
+  const planetColorPicker = document.getElementById('planetColor')
+  const moon1VisibleRadios = document.querySelectorAll(
+    'input[name="moon1Visible"]'
+  )
+  const moon1ColorPicker = document.getElementById('moon1Color')
+  const moon2VisibleRadios = document.querySelectorAll(
+    'input[name="moon2Visible"]'
+  )
+  const moon2ColorPicker = document.getElementById('moon2Color')
+  const orbitSpeedSlider = document.getElementById('orbitSpeed') // Planet speed
+  const orbitSpeedValueSpan = document.getElementById('orbitSpeedValue')
+  const moonSpeedSlider = document.getElementById('moonSpeed') // Moon speed
+  const moonSpeedValueSpan = document.getElementById('moonSpeedValue')
+  const mainOrbitColorPicker = document.getElementById('mainOrbitColor')
+  const mainOrbitThicknessSlider = document.getElementById('mainOrbitThickness')
+  const mainOrbitThicknessValueSpan = document.getElementById(
+    'mainOrbitThicknessValue'
+  )
+  const deliveryDayCheckboxes = document.querySelectorAll(
+    'input[name="deliveryDay"]'
+  )
+  const planetActiveColorPicker = document.getElementById('planetActiveColor')
+  const dayMarkColorPicker = document.getElementById('dayMarkColor')
+  const radarVisibilityModeRadios = document.querySelectorAll(
+    'input[name="radarVisibilityMode"]'
+  )
+  const radarColorPicker = document.getElementById('radarColor')
+  const radarThicknessSlider = document.getElementById('radarThickness')
+  const radarThicknessValueSpan = document.getElementById('radarThicknessValue')
+  // NEW: Get reference to radar flow direction radios
+  const radarFlowDirectionRadios = document.querySelectorAll(
+    'input[name="radarFlowDirection"]'
+  )
+  // NEW: Get reference to radar animation speed controls
+  const radarAnimationSpeedSlider = document.getElementById(
+    'radarAnimationSpeed'
+  )
+  const radarAnimationSpeedValueSpan = document.getElementById(
+    'radarAnimationSpeedValue'
+  )
+  // NEW: Get reference to radar sets per day controls
+  const radarSetsPerDaySlider = document.getElementById('radarSetsPerDay')
+  const radarSetsPerDayValueSpan = document.getElementById(
+    'radarSetsPerDayValue'
+  )
+  // --- End Orbit Control Refs ---
+
+  // --- ADD LOG 2 ---
+  console.log('Button Element References:', {
+    playStopButton: !!playStopButton, // Log true if found, false if null
+    setCurrentAsModeAButton: !!setCurrentAsModeAButton,
+    setCurrentAsModeBButton: !!setCurrentAsModeBButton,
+    selectModeAButton: !!selectModeAButton,
+    selectModeBButton: !!selectModeBButton,
+    saveAllModesButton: !!saveAllModesButton,
+  })
+
+  // --- Helper functions (Keep existing) ---
   // Helper function to safely set control value and display
-  const setupControl = (slider, valueDisplay, value) => {
-    if (slider && value !== undefined) slider.value = value
-    // Call updateValueDisplay here to ensure initial format is correct
-    if (valueDisplay) updateValueDisplay(valueDisplay.id, value)
+  const setupControl = (controlElement, value) => {
+    if (!controlElement || value === undefined || value === null) return
+    if (controlElement.type === 'checkbox') {
+      controlElement.checked = !!value
+    } else {
+      controlElement.value = value
+    }
+  }
+  // Combined slider/display setup using the value helper
+  const setupSliderAndDisplay = (
+    sliderElem,
+    displayElem,
+    value,
+    precision = 1
+  ) => {
+    if (sliderElem) setupControl(sliderElem, value) // Use the refined setupControl
+    if (displayElem) updateValueDisplay(displayElem.id, value) // Use existing display update
   }
   const setupColorControl = (picker, colorHex) => {
-    if (picker && colorHex) picker.value = colorHex
+    // Use the refined setupControl
+    setupControl(picker, colorHex)
   }
   const setupRadioControl = (radios, value) => {
+    if (!radios || value === undefined) return
+    const valueStr = String(value)
     radios.forEach((radio) => {
-      radio.checked = radio.value === value
+      radio.checked = radio.value === valueStr
     })
   }
+  // --- End Helpers ---
 
   // --- Set initial values from initialParams ---
-  const params = initialParams
+  console.log('Setting initial control values...') // Log before setting values
+  const params = initialParams // Use the passed-in params
+
+  // Energy Controls Setup (existing)
   setupRadioControl(simTypeRadios, params.simulationType)
-  // Shared
   if (particleAmountSlider) particleAmountSlider.max = MAX_PARTICLES
-  setupControl(particleAmountSlider, particleAmountValue, params.particleAmount)
-  setupControl(particleSizeSlider, particleSizeValue, params.particleSize)
-  setupControl(particleSpeedSlider, particleSpeedValue, params.particleSpeed)
+  setupSliderAndDisplay(
+    particleAmountSlider,
+    particleAmountValue,
+    params.particleAmount
+  )
+  setupSliderAndDisplay(
+    particleSizeSlider,
+    particleSizeValue,
+    params.particleSize
+  )
+  setupSliderAndDisplay(
+    particleSpeedSlider,
+    particleSpeedValue,
+    params.particleSpeed
+  )
   setupColorControl(particleColorPicker, params.particleColorHex)
   setupColorControl(backgroundColorPicker, params.backgroundColorHex)
-  setupControl(boundaryRadiusSlider, boundaryRadiusValue, params.boundaryRadius)
-  // Metaball/Repel
-  setupControl(particleForceSlider, particleForceValue, params.particleForce)
-  setupControl(
+  setupSliderAndDisplay(
+    boundaryRadiusSlider,
+    boundaryRadiusValue,
+    params.boundaryRadius
+  )
+  setupSliderAndDisplay(canvasScaleSlider, canvasScaleValue, params.canvasScale)
+  setupSliderAndDisplay(
+    particleForceSlider,
+    particleForceValue,
+    params.particleForce
+  )
+  setupSliderAndDisplay(
     metaballThresholdSlider,
     metaballThresholdValue,
     params.metaballThreshold
   )
-  // Get reference to new control
-  setupControl(canvasScaleSlider, canvasScaleValue, params.canvasScale)
+
+  // Set initial state for Orbit Layer Toggle
+  if (orbitLayerToggle) {
+    // Use the orbitVisible from the final instanceParams (which reflects init success/failure)
+    orbitLayerToggle.checked = params.orbitVisible
+  }
+
+  // --- NEW: Set initial values for Orbit Controls ---
+  setupColorControl(sunColorPicker, params.sunColor)
+  setupRadioControl(sunVisibleRadios, params.showSun)
+  setupColorControl(planetColorPicker, params.planetColor)
+  setupRadioControl(moon1VisibleRadios, params.showMoon1)
+  setupColorControl(moon1ColorPicker, params.moon1Color)
+  setupRadioControl(moon2VisibleRadios, params.showMoon2)
+  setupColorControl(moon2ColorPicker, params.moon2Color)
+
+  // Orbit Speed Slider (Planet) - Convert actual speed to slider value
+  if (orbitSpeedSlider && orbitSpeedValueSpan) {
+    const initialOrbitSliderValue = calculatePlanetSliderValue(
+      params.orbitSpeed
+    )
+    setupSliderAndDisplay(
+      orbitSpeedSlider,
+      orbitSpeedValueSpan,
+      initialOrbitSliderValue // Set slider to 1-10
+    )
+    // Update display span *separately* to show the actual speed
+    updateValueDisplay(orbitSpeedValueSpan.id, params.orbitSpeed, 3)
+  }
+  // Moon Speed Slider - Convert actual speed to slider value
+  if (moonSpeedSlider && moonSpeedValueSpan) {
+    const initialMoonSliderValue = calculateMoonSliderValue(
+      params.moonOrbitSpeed
+    )
+    setupSliderAndDisplay(
+      moonSpeedSlider,
+      moonSpeedValueSpan,
+      initialMoonSliderValue // Set slider to 1-10
+    )
+    // Update display span *separately* to show the actual speed
+    updateValueDisplay(moonSpeedValueSpan.id, params.moonOrbitSpeed, 3)
+  }
+
+  setupColorControl(mainOrbitColorPicker, params.mainOrbitColor)
+  setupSliderAndDisplay(
+    mainOrbitThicknessSlider,
+    mainOrbitThicknessValueSpan,
+    params.mainOrbitThickness
+  )
+  setupColorControl(radarColorPicker, params.radarColor)
+  setupSliderAndDisplay(
+    radarThicknessSlider,
+    radarThicknessValueSpan,
+    params.radarThickness
+  )
+
+  // Delivery Day Checkboxes
+  if (deliveryDayCheckboxes && params.activeDeliveryDays) {
+    deliveryDayCheckboxes.forEach((checkbox) => {
+      const day = checkbox.value
+      if (params.activeDeliveryDays.hasOwnProperty(day)) {
+        checkbox.checked = params.activeDeliveryDays[day]
+      }
+    })
+  }
+
+  setupColorControl(planetActiveColorPicker, params.planetActiveColor)
+  setupColorControl(dayMarkColorPicker, params.dayMarkColor)
+  setupRadioControl(radarVisibilityModeRadios, params.radarVisibilityMode)
+  // NEW: Setup radar flow direction radios
+  setupRadioControl(radarFlowDirectionRadios, params.radarFlowDirection)
+  // NEW: Setup radar animation speed slider
+  if (radarAnimationSpeedSlider && params.radarAnimationSpeed !== undefined) {
+    setupSliderAndDisplay(
+      radarAnimationSpeedSlider,
+      radarAnimationSpeedValueSpan,
+      params.radarAnimationSpeed,
+      2 // Precision
+    )
+  }
+  // NEW: Setup radar sets per day slider
+  if (radarSetsPerDaySlider && params.radarSetsPerDay !== undefined) {
+    setupSliderAndDisplay(
+      radarSetsPerDaySlider,
+      radarSetsPerDayValueSpan,
+      params.radarSetsPerDay,
+      0 // Precision for integer display
+    )
+  }
+  // --- End Orbit Controls Initial Values ---
 
   // --- Event listeners for LIVE controls ---
-  // Shared listeners
+  console.log('Attaching LIVE control listeners (sliders, colors, etc.)...') // Log before listeners
+  // Energy Listeners (existing)
   if (particleAmountSlider)
     particleAmountSlider.addEventListener('input', (e) => {
       const v = parseInt(e.target.value)
@@ -876,12 +1608,17 @@ function setupControls(initialParams) {
     backgroundColorPicker.addEventListener('input', (e) =>
       window.updateEnergySimulation({ backgroundColorHex: e.target.value })
     )
-  // Boundary Radius Listener (Now correctly referenced)
   if (boundaryRadiusSlider)
     boundaryRadiusSlider.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value)
       updateValueDisplay('boundaryRadiusValue', v)
       window.updateEnergySimulation({ boundaryRadius: v })
+    })
+  if (canvasScaleSlider)
+    canvasScaleSlider.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value)
+      updateValueDisplay('canvasScaleValue', v)
+      window.updateEnergySimulation({ canvasScale: v })
     })
   // Metaball/Repel listeners
   if (particleForceSlider)
@@ -890,59 +1627,253 @@ function setupControls(initialParams) {
       updateValueDisplay('particleForceValue', v)
       window.updateEnergySimulation({ particleForce: v })
     })
-  // Metaball Threshold Listener (Now correctly referenced)
   if (metaballThresholdSlider)
     metaballThresholdSlider.addEventListener('input', (e) => {
       const v = parseFloat(e.target.value)
       updateValueDisplay('metaballThresholdValue', v)
       window.updateEnergySimulation({ metaballThreshold: v })
     })
-  // Get reference to new control
-  if (canvasScaleSlider)
-    canvasScaleSlider.addEventListener('input', (e) => {
-      const v = parseFloat(e.target.value)
-      updateValueDisplay('canvasScaleValue', v)
-      window.updateEnergySimulation({ canvasScale: v })
-    })
 
-  // Simulation Type Change Listener
-  if (simTypeRadios.length > 0) {
-    simTypeRadios.forEach((radio) => {
+  // Orbit Layer Toggle Listener (existing)
+  if (orbitLayerToggle) {
+    orbitLayerToggle.addEventListener('change', (e) => {
+      window.updateEnergySimulation({ orbitVisible: e.target.checked })
+    })
+  }
+
+  // --- NEW: Add listeners for Orbit Controls ---
+  if (sunColorPicker)
+    sunColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ sunColor: e.target.value })
+    )
+  if (sunVisibleRadios)
+    sunVisibleRadios.forEach((radio) => {
       radio.addEventListener('change', (e) => {
         if (e.target.checked) {
-          const newType = e.target.value
-          if (['metaball', 'liquid repel'].includes(newType)) {
-            console.log(`UI: Simulation type changed to: ${newType}`)
-            window.updateEnergySimulation({ simulationType: newType })
-          }
+          updateOrbitModuleParameters({ showSun: e.target.value === 'true' })
+        }
+      })
+    })
+  if (planetColorPicker)
+    planetColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ planetColor: e.target.value })
+    )
+  if (moon1VisibleRadios)
+    moon1VisibleRadios.forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          updateOrbitModuleParameters({ showMoon1: e.target.value === 'true' })
+        }
+      })
+    })
+  if (moon1ColorPicker)
+    moon1ColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ moon1Color: e.target.value })
+    )
+  if (moon2VisibleRadios)
+    moon2VisibleRadios.forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          updateOrbitModuleParameters({ showMoon2: e.target.value === 'true' })
+        }
+      })
+    })
+  if (moon2ColorPicker)
+    moon2ColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ moon2Color: e.target.value })
+    )
+
+  // Orbit Speed Slider Listener (Planet)
+  if (orbitSpeedSlider && orbitSpeedValueSpan) {
+    orbitSpeedSlider.addEventListener('input', (e) => {
+      const sliderValue = parseInt(e.target.value, 10)
+      const newActualSpeed = calculateActualPlanetSpeed(sliderValue)
+      // Update the display span FIRST
+      updateValueDisplay(orbitSpeedValueSpan.id, newActualSpeed, 3)
+      // Update the simulation parameter
+      updateOrbitModuleParameters({ orbitSpeed: newActualSpeed })
+    })
+  }
+  // Moon Speed Slider Listener
+  if (moonSpeedSlider && moonSpeedValueSpan) {
+    moonSpeedSlider.addEventListener('input', (e) => {
+      const sliderValue = parseInt(e.target.value, 10)
+      const newActualMoonSpeed = calculateActualMoonSpeed(sliderValue)
+      // Update the display span FIRST
+      updateValueDisplay(moonSpeedValueSpan.id, newActualMoonSpeed, 3)
+      // Update the simulation parameter
+      updateOrbitModuleParameters({ moonOrbitSpeed: newActualMoonSpeed })
+    })
+  }
+
+  if (mainOrbitColorPicker)
+    mainOrbitColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ mainOrbitColor: e.target.value })
+    )
+  if (mainOrbitThicknessSlider)
+    mainOrbitThicknessSlider.addEventListener('input', (e) => {
+      const thickness = parseInt(e.target.value, 10)
+      updateValueDisplay(mainOrbitThicknessValueSpan.id, thickness)
+      updateOrbitModuleParameters({ mainOrbitThickness: thickness })
+    })
+  if (radarColorPicker)
+    radarColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ radarColor: e.target.value })
+    )
+  if (radarThicknessSlider)
+    radarThicknessSlider.addEventListener('input', (e) => {
+      const thickness = parseInt(e.target.value, 10)
+      updateValueDisplay(radarThicknessValueSpan.id, thickness)
+      updateOrbitModuleParameters({ radarThickness: thickness })
+    })
+
+  // Delivery Day Checkbox Listeners
+  if (deliveryDayCheckboxes) {
+    deliveryDayCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener('change', (e) => {
+        const day = e.target.value
+        const isChecked = e.target.checked
+        // Get the current state from activeParams (or potentially orbit module's state?)
+        // For simplicity, let's modify activeParams used by getCurrentSettings
+        // NOTE: This assumes activeParams is reliably reflecting the current state.
+        // A potentially safer approach would be to fetch the current state from orbit.js if possible.
+        const currentDays = activeParams.activeDeliveryDays || {}
+        const updatedDays = {
+          ...currentDays, // Copy existing days
+          [day]: isChecked, // Update the changed day
+        }
+        // Update the orbit module
+        updateOrbitModuleParameters({ activeDeliveryDays: updatedDays })
+        // Also update activeParams so getCurrentSettingsFromControls reflects this change
+        activeParams.activeDeliveryDays = updatedDays
+      })
+    })
+  }
+
+  if (planetActiveColorPicker)
+    planetActiveColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ planetActiveColor: e.target.value })
+    )
+  if (dayMarkColorPicker)
+    dayMarkColorPicker.addEventListener('input', (e) =>
+      updateOrbitModuleParameters({ dayMarkColor: e.target.value })
+    )
+  if (radarVisibilityModeRadios)
+    radarVisibilityModeRadios.forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          updateOrbitModuleParameters({ radarVisibilityMode: e.target.value })
+        }
+      })
+    })
+  // NEW: Add listener for radar flow direction
+  if (radarFlowDirectionRadios) {
+    radarFlowDirectionRadios.forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          updateOrbitModuleParameters({ radarFlowDirection: e.target.value })
         }
       })
     })
   }
-  // Play/Stop Button
-  if (playStopButton)
-    playStopButton.addEventListener('click', () => {
-      simulationRunning = !simulationRunning
-      playStopButton.textContent = simulationRunning ? 'Stop' : 'Play'
+  // NEW: Add listener for radar animation speed
+  if (radarAnimationSpeedSlider) {
+    radarAnimationSpeedSlider.addEventListener('input', (e) => {
+      const speed = parseFloat(e.target.value)
+      updateValueDisplay('radarAnimationSpeedValue', speed, 2)
+      updateOrbitModuleParameters({ radarAnimationSpeed: speed })
     })
+  }
+  // NEW: Add listener for radar sets per day
+  if (radarSetsPerDaySlider) {
+    radarSetsPerDaySlider.addEventListener('input', (e) => {
+      const sets = parseInt(e.target.value, 10)
+      updateValueDisplay('radarSetsPerDayValue', sets, 0)
+      updateOrbitModuleParameters({ radarSetsPerDay: sets })
+    })
+  }
+  // --- End Orbit Listeners ---
+
+  // ... rest of setupControls (Sim Type, Play/Stop, Mode buttons) ...
+
+  console.log('Finished attaching LIVE control listeners.') // Log after listeners
+
+  // --- ADD LOG 3 ---
+  console.log('Attempting to attach BUTTON listeners...')
+
+  // Simulation Type Change Listener (Keep existing)
+  if (simTypeRadios.length > 0) {
+    // ... simType listener ...
+  }
+
+  // Play/Stop Button
+  if (playStopButton) {
+    // Check if button exists before adding listener
+    playStopButton.addEventListener('click', () => {
+      const newEnabledState = !simulationRunning // Determine the new state
+      simulationRunning = newEnabledState // Update energy.js state
+      playStopButton.textContent = simulationRunning ? 'Stop' : 'Play'
+
+      // --- Propagate to orbit module ---
+      updateOrbitModuleParameters({ enabled: newEnabledState })
+      // --- End propagation ---
+
+      console.log(
+        'Play/Stop button clicked. Simulation Running:',
+        simulationRunning,
+        'Orbit Enabled:',
+        newEnabledState
+      )
+    })
+  } else {
+    console.warn('Play/Stop button not found, listener not attached.')
+  }
+
   // Mode Management Buttons
-  if (setCurrentAsModeAButton)
+  if (setCurrentAsModeAButton) {
+    // Check button exists
     setCurrentAsModeAButton.addEventListener('click', () =>
       setCurrentSettingsAsMode('A')
     )
-  if (setCurrentAsModeBButton)
+  } else {
+    console.warn('Set Mode A button not found, listener not attached.')
+  }
+
+  if (setCurrentAsModeBButton) {
+    // Check button exists
     setCurrentAsModeBButton.addEventListener('click', () =>
       setCurrentSettingsAsMode('B')
     )
-  if (selectModeAButton)
-    selectModeAButton.addEventListener('click', () => loadModeToPreview('A'))
-  if (selectModeBButton)
-    selectModeBButton.addEventListener('click', () => loadModeToPreview('B'))
-  if (saveAllModesButton)
-    saveAllModesButton.addEventListener('click', saveAllModes)
-}
+  } else {
+    console.warn('Set Mode B button not found, listener not attached.')
+  }
 
-// --- Update Simulation ---
+  if (selectModeAButton) {
+    // Check button exists
+    selectModeAButton.addEventListener('click', () => loadModeToPreview('A'))
+  } else {
+    console.warn('Select Mode A button not found, listener not attached.')
+  }
+
+  if (selectModeBButton) {
+    // Check button exists
+    selectModeBButton.addEventListener('click', () => loadModeToPreview('B'))
+  } else {
+    console.warn('Select Mode B button not found, listener not attached.')
+  }
+
+  if (saveAllModesButton) {
+    // Check button exists
+    saveAllModesButton.addEventListener('click', saveAllModes)
+  } else {
+    console.warn('Save All Modes button not found, listener not attached.')
+  }
+
+  // --- ADD LOG 4 ---
+  console.log('Finished attempting to attach BUTTON listeners.')
+} // --- End setupControls ---
+
+// --- Update Simulation Physics ---
 function updateParticles(deltaTime) {
   // Guard clause only needs metaballMaterial now
   if (!particles || !metaballMaterial) {
@@ -950,7 +1881,7 @@ function updateParticles(deltaTime) {
   }
 
   const currentParams = activeParams
-  const speedFactor = currentParams.particleSpeed * deltaTime * 60
+  const speedFactor = currentParams.particleSpeed * deltaTime * 6
   const boundary = currentParams.boundaryRadius
   const damping = 0.98
   const activeParticleCount = currentParams.particleAmount
@@ -1079,214 +2010,362 @@ function onWindowResize(targetContainer) {
 }
 
 // --- Animation Loop ---
-const clock = new THREE.Clock()
+const energyClock = new THREE.Clock()
 function animate() {
   requestAnimationFrame(animate)
-  const deltaTime = clock.getDelta()
+  const deltaTime = energyClock.getDelta()
 
+  // --- 1. Update Physics ---
   if (simulationRunning) {
     updateParticles(deltaTime)
   }
+  if (isOrbitLayerVisible) {
+    updateOrbitAnimation(deltaTime)
+  }
 
-  if (renderer && scene && camera && finalScene && finalCamera) {
-    // --- Simplified Rendering Path (Always Metaball Shader) ---
-    // 1. Render main scene (containing metaballQuad) to the offscreen renderTarget
+  // --- 2. Render Energy Effect to Target ---
+  if (renderer && scene && camera && renderTarget && metaballQuad) {
     renderer.setRenderTarget(renderTarget)
-    renderer.render(scene, camera)
+    renderer.clear() // Clear the render target
+    renderer.render(scene, camera) // Render metaball shader source
+  }
 
-    // 2. Render finalScene (containing finalQuad with the renderTarget texture) to the screen
-    renderer.setRenderTarget(null)
+  // --- 3. Render Final Composition to Canvas ---
+  if (renderer && finalScene && finalCamera && finalQuad) {
+    renderer.setRenderTarget(null) // Switch back to canvas
+
+    // --- Clear Canvas ---
+    renderer.autoClear = true // Ensure canvas is cleared before drawing energy layer
+    renderer.clear()
+
+    // --- Render Energy Layer FIRST ---
+    // (finalQuad uses the transparent renderTarget texture)
     renderer.render(finalScene, finalCamera)
+
+    // --- Prepare for Orbit Overlay ---
+    renderer.autoClear = false // Prevent clearing before drawing orbit layer
+
+    // --- Render Orbit Layer (if visible) ON TOP ---
+    if (isOrbitLayerVisible) {
+      // console.log('Rendering orbit layer - visibility flag is true') // Disabled log
+      renderOrbitScene(renderer) // Render orbit scene over the energy layer
+    } else {
+      // Add this log once to debug
+      // console.log('Orbit layer not rendered - visibility flag is false') // Disabled log
+    }
+  }
+
+  // --- 4. Reset autoClear for next frame ---
+  if (renderer) {
+    renderer.autoClear = true
   }
 }
 
 // --- Global Initialization Function (Assign to window) ---
-// No longer needs to be async just because of loadModes
 window.initializeEnergySimulation = function (config = {}) {
-  // Modes are loaded synchronously now, no need to await here
-  // loadModes(); // Ensure modes are loaded (called below before init)
-  init(config) // init doesn't strictly need to be async anymore
+  // Modes are loaded synchronously now
+  // loadModes(); // Called by initializeSimulations
+  init(config)
 }
 
 // --- External API (Assign to window) ---
-// This API primarily targets the instance being actively controlled by the UI (energy.html)
-// It updates `activeParams` and applies changes to the *current* scene/material/particles.
 window.updateEnergySimulation = function (newParams) {
   // Guard clause
   if (!particles || !scene || !metaballMaterial) {
+    console.warn(
+      '[energy.js] API update called before simulation fully initialized.'
+    )
     return
   }
   if (typeof newParams !== 'object' || newParams === null) {
+    console.warn(
+      '[energy.js] API update called with invalid parameters:',
+      newParams
+    )
     return
   }
 
-  console.log('API Update with:', newParams)
+  console.log('[energy.js] API Update with:', newParams)
   let changeDetectedOverall = false // Track if any param actually changed
   const previousType = activeParams.simulationType
   const previousAmount = activeParams.particleAmount
+  const previousParticleSize = activeParams.particleSize // Store previous size
 
-  // --- Update activeParams safely ---
+  // --- Update activeParams safely (Energy specific + orbitVisible) ---
+  // Define keys relevant to this energy module
+  const energyKeys = [
+    'simulationType',
+    'particleAmount',
+    'particleSize',
+    'particleSpeed',
+    'particleColorHex',
+    'backgroundColorHex',
+    'boundaryRadius',
+    'canvasSize',
+    'canvasScale',
+    'particleForce',
+    'metaballThreshold',
+    'orbitVisible',
+  ] // <<< Added closing bracket ']'
+
   for (const key in newParams) {
-    if (activeParams.hasOwnProperty(key)) {
+    // --- FIXED Condition: Check if the key is relevant to energy/visibility ---
+    if (energyKeys.includes(key)) {
       const incomingValue = newParams[key]
       let processedValue = incomingValue
 
-      // Coerce type if necessary (simple version)
-      if (typeof activeParams[key] === 'number') {
+      // Handle orbit visibility toggle separately
+      if (key === 'orbitVisible') {
+        const boolValue =
+          typeof incomingValue === 'string'
+            ? incomingValue === 'true'
+            : !!incomingValue
+        if (isOrbitLayerVisible !== boolValue) {
+          isOrbitLayerVisible = boolValue
+          console.log(
+            `[energy.js] API: Set orbit layer visibility to ${isOrbitLayerVisible}`
+          )
+          changeDetectedOverall = true
+        }
+        // Store the boolean value in activeParams too for consistency
+        activeParams[key] = isOrbitLayerVisible // Store the final boolean state
+        continue // Move to next key after handling visibility
+      }
+
+      // --- Coerce type for other energy simulation params ---
+      // Check the type of the *default* parameter for guidance if activeParam doesn't exist yet
+      const targetType = typeof (activeParams[key] !== undefined
+        ? activeParams[key]
+        : defaultParams[key])
+
+      if (targetType === 'number') {
         processedValue = parseFloat(incomingValue)
         if (isNaN(processedValue)) {
-          console.warn(`API: Invalid number format for ${key}:`, incomingValue)
+          console.warn(
+            `[energy.js] API: Invalid number format for ${key}:`,
+            incomingValue,
+            `Expected number. Skipping.`
+          )
           continue // Skip update for this key
         }
-      } else if (typeof activeParams[key] === 'string') {
+      } else if (targetType === 'string') {
         processedValue = String(incomingValue)
-      } // Add boolean etc. if needed
+      } // Add boolean handling here if needed for non-visibility energy booleans
 
-      // Update if value is actually different
-      if (processedValue !== activeParams[key]) {
+      // Update if value is actually different OR if the key didn't exist before
+      if (
+        activeParams[key] === undefined ||
+        processedValue !== activeParams[key]
+      ) {
         activeParams[key] = processedValue
         changeDetectedOverall = true
-        // console.log(`API: Updated activeParams.${key} to ${processedValue}`);
+        console.log(
+          `[energy.js] API: Updated activeParams.${key} to ${processedValue}`
+        )
       }
-    }
-  }
+    } // End if (energyKeys.includes(key))
+  } // End for...in loop
 
   // Re-clamp amount AFTER potential update
   activeParams.particleAmount = Math.max(
     1,
-    Math.min(activeParams.particleAmount, MAX_PARTICLES)
+    Math.min(
+      activeParams.particleAmount || defaultParams.particleAmount,
+      MAX_PARTICLES
+    )
   )
   const currentAmount = activeParams.particleAmount
 
-  // --- Handle consequences of changes ---
-  let needsParticleRecreation = currentAmount !== previousAmount // Recreate only if amount changed
+  // --- Handle consequences of changes (Energy specific) ---
+  const sizeChanged = activeParams.particleSize !== previousParticleSize
+  let needsParticleRecreation = currentAmount !== previousAmount
+  // --- Declare uniformsUpdated flag earlier ---
+  let uniformsUpdated = false // Initialize flag
 
-  // --- Particle recreation ---
-  if (needsParticleRecreation) {
+  if (sizeChanged && !needsParticleRecreation) {
     console.log(
-      'API: Recreating particles for amount change to:',
+      '[energy.js] API: Particle size changed, updating sizes uniform only.'
+    )
+    // Only update sizes, not positions/velocities
+    particles.forEach((p, index) => {
+      if (p && index < currentAmount) {
+        p.size = activeParams.particleSize
+        particleSizesUniform[index] = p.size
+      } else if (index < MAX_PARTICLES) {
+        particleSizesUniform[index] = 0
+      }
+    })
+    metaballMaterial.uniforms.particleSizes.needsUpdate = true
+    uniformsUpdated = true // Use the declared variable
+  } else if (needsParticleRecreation) {
+    console.log(
+      '[energy.js] API: Recreating particles for amount change to:',
       currentAmount
     )
-    particles = createParticles(activeParams) // Resets uniforms/count internally
+    // This function also updates size and position uniforms
+    particles = createParticles(activeParams)
+    // No need to set uniformsUpdated = true here, as 'needsParticleRecreation'
+    // is checked later, and createParticles handles internal flags.
   }
 
   // --- Type Change effects ---
   if (activeParams.simulationType !== previousType) {
     console.log(
-      'API: Type changed from',
+      '[energy.js] API: Type changed from',
       previousType,
       'to',
       activeParams.simulationType
     )
   }
 
-  // --- Update Uniforms Directly Based on activeParams ---
-  // Update uniforms regardless of changeDetected, as the state *might* need syncing
-  // especially after type changes or particle recreation.
-  let uniformsUpdated = false // Track if uniforms were actually modified
+  // --- Update Uniforms Directly Based on activeParams (Energy specific) ---
+  // 'uniformsUpdated' flag declared above
 
-  // Background Color (Scene and Uniform)
+  // Background Color
   if (
     scene.background.getHexString() !==
-    activeParams.backgroundColorHex.substring(1)
+    activeParams.backgroundColorHex?.substring(1)
   ) {
     scene.background.set(activeParams.backgroundColorHex)
     metaballMaterial.uniforms.backgroundColor.value.set(
       activeParams.backgroundColorHex
     )
-    uniformsUpdated = true
+    uniformsUpdated = true // Use the declared variable
   }
-  // Particle Color Uniform
+  // Particle Color
   if (
     metaballMaterial.uniforms.particleColor.value.getHexString() !==
-    activeParams.particleColorHex.substring(1)
+    activeParams.particleColorHex?.substring(1)
   ) {
     metaballMaterial.uniforms.particleColor.value.set(
       activeParams.particleColorHex
     )
-    uniformsUpdated = true
+    uniformsUpdated = true // Use the declared variable
   }
-  // Particle Count Uniform
-  if (
-    metaballMaterial.uniforms.particleCount.value !==
-    activeParams.particleAmount
-  ) {
-    metaballMaterial.uniforms.particleCount.value = activeParams.particleAmount
-    uniformsUpdated = true
+  // Particle Count
+  if (metaballMaterial.uniforms.particleCount.value !== currentAmount) {
+    metaballMaterial.uniforms.particleCount.value = currentAmount
+    uniformsUpdated = true // Use the declared variable
   }
-  // Boundary Radius Uniform
+  // Boundary Radius
   if (
     metaballMaterial.uniforms.boundaryRadius.value !==
     activeParams.boundaryRadius
   ) {
     metaballMaterial.uniforms.boundaryRadius.value = activeParams.boundaryRadius
-    uniformsUpdated = true
+    uniformsUpdated = true // Use the declared variable
   }
-  // Threshold Uniform
+  // Threshold
   if (
     metaballMaterial.uniforms.threshold.value !== activeParams.metaballThreshold
   ) {
     metaballMaterial.uniforms.threshold.value = activeParams.metaballThreshold
-    uniformsUpdated = true
+    uniformsUpdated = true // Use the declared variable
   }
-  // Particle Sizes Uniform (update if size changed or particles recreated)
-  // Check if any active particle's size differs from the uniform array's corresponding entry OR if recreated
-  let sizeMismatch = false
-  if (changeDetectedOverall && newParams.particleSize !== undefined) {
-    // Check if size was explicitly passed and changed
-    sizeMismatch = true
-  } else if (needsParticleRecreation) {
-    // Always update sizes if recreating
-    sizeMismatch = true
-  }
-
-  if (sizeMismatch) {
-    // Update particle data array (if size changed)
-    if (newParams.particleSize !== undefined) {
-      particles.forEach((p) => {
-        if (p) p.size = activeParams.particleSize
-      })
-    }
-    // Update uniform array (always sync after potential change/recreation)
-    for (let i = 0; i < MAX_PARTICLES; ++i) {
-      // Use size from particle data if it exists and is active, else 0
-      particleSizesUniform[i] =
-        i < currentAmount && particles[i] ? particles[i].size : 0
-    }
-    metaballMaterial.uniforms.particleSizes.needsUpdate = true
-    uniformsUpdated = true
-    // console.log("API: Updating size uniform array.");
-  }
-
-  // Position uniform is marked in updateParticles, but ensure flag is set if other uniforms change
-  if (uniformsUpdated) {
-    metaballMaterial.uniforms.particlePositions.needsUpdate = true // Ensure position updates render
-  }
-
-  // Add handling for canvasScale uniform
+  // Canvas Scale
   if (
     metaballMaterial.uniforms.canvasScale.value !== activeParams.canvasScale
   ) {
     metaballMaterial.uniforms.canvasScale.value = activeParams.canvasScale
-    uniformsUpdated = true
+    uniformsUpdated = true // Use the declared variable
   }
 
-  if (changeDetectedOverall) {
-    console.log('API: Applied updates. Current activeParams:', activeParams)
+  // Flag uniforms for update if needed
+  // Use the consistent variable name 'uniformsUpdated'
+  if (uniformsUpdated || needsParticleRecreation || sizeChanged) {
+    // Position uniform is updated in physics loop, but ensure flags are set here
+    // if other uniforms changed or particles were recreated/resized.
+    metaballMaterial.uniforms.particlePositions.needsUpdate = true
+    metaballMaterial.uniforms.particleSizes.needsUpdate = true
+    console.log('[energy.js] API: Flagging position/size uniforms for update.')
   }
-}
+
+  // --- >>> NEW: Coordinate Orbit Update <<< ---
+  console.log('[energy.js] API: Preparing to update Orbit module.')
+  const orbitParamsToUpdate = {}
+  const knownOrbitKeys = [
+    'enabled',
+    'showSun',
+    'sunColor',
+    'planetColor',
+    'showMoon1',
+    'moon1Color',
+    'showMoon2',
+    'moon2Color',
+    'orbitSpeed',
+    'moonOrbitSpeed',
+    'mainOrbitColor',
+    'mainOrbitThickness',
+    'radarColor',
+    'radarThickness',
+    'activeDeliveryDays',
+    'planetActiveColor',
+    'radarVisibilityMode',
+    'canvasSize',
+    'sunSize',
+    'mainOrbitRadius',
+    'dayMarkLength',
+    'planetSize',
+    'moonSize',
+    'moonOrbitRadius',
+    'numRadarLines',
+    'radarMaxRadiusFactor',
+    'radarMinRadius',
+    'radarAnimationSpeed',
+    'dayMarkColor',
+    'radarFlowDirection', // Add new parameter here
+    'radarSetsPerDay', // Add new parameter here
+  ]
+
+  for (const key in newParams) {
+    if (knownOrbitKeys.includes(key)) {
+      orbitParamsToUpdate[key] = newParams[key]
+    }
+  }
+
+  if (Object.keys(orbitParamsToUpdate).length > 0) {
+    console.log(
+      '[energy.js] API: Calling updateOrbitModuleParameters with:',
+      orbitParamsToUpdate
+    )
+    if (typeof updateOrbitModuleParameters === 'function') {
+      updateOrbitModuleParameters(orbitParamsToUpdate)
+    } else {
+      console.error(
+        '[energy.js] Error: updateOrbitModuleParameters function not imported correctly or not available!'
+      )
+    }
+  } else {
+    console.log(
+      '[energy.js] API: No orbit-specific parameters found in update call.'
+    )
+  }
+
+  // --- Final Logging ---
+  if (changeDetectedOverall) {
+    console.log(
+      '[energy.js] API: Applied updates. Current activeParams:',
+      JSON.parse(JSON.stringify(activeParams))
+    )
+  } else {
+    console.log(
+      '[energy.js] API: No relevant energy parameters changed in update call.'
+    )
+  }
+} // --- End window.updateEnergySimulation ---
 
 // --- Modify Initialization Logic ---
 function initializeSimulations() {
   // 1. Load modes synchronously first
-  loadModes() // Call the sync function
-  window.savedModes = savedModes // Make loaded modes globally accessible for controller/API
+  loadModes()
+  window.savedModes = savedModes
 
   // 2. Attempt initialization for the testbed (energy.html)
   const testContainer = document.getElementById('container')
   const testCanvas = document.getElementById('simulationCanvas')
   if (testContainer && testCanvas) {
     console.log('Attempting initialization for HTML testbed (#container)')
+    // init now handles initializing orbit internally
     init({
       containerSelector: '#container',
       createCanvas: false,
@@ -1299,32 +2378,73 @@ function initializeSimulations() {
     console.log(
       `Found ${webflowContainers.length} Webflow container(s) (.energy-container). Attempting initialization...`
     )
-    for (const container of webflowContainers) {
-      let stableSelector
-      if (container.id) {
-        stableSelector = `#${container.id}`
-      } else {
-        const containers = document.querySelectorAll('.energy-container')
-        let index = Array.prototype.indexOf.call(containers, container)
+    webflowContainers.forEach((container, index) => {
+      let stableSelector = container.id ? `#${container.id}` : null
+      if (!stableSelector) {
         stableSelector = `.energy-container:nth-of-type(${index + 1})`
         console.warn(
           `Webflow container lacks ID. Using potentially unstable selector: ${stableSelector}. Add a unique ID for reliability.`
         )
       }
 
+      // ADDED: Force default mode A for Webflow containers that don't have mode attrs
+      if (!container.dataset.setMode && !container.dataset.mode) {
+        console.log('Webflow container has no mode attribute, forcing Mode A')
+        container.dataset.setMode = 'A'
+      }
+
+      // init now handles initializing orbit internally
       init({
         containerSelector: stableSelector,
-        createCanvas: true,
+        createCanvas: true, // Assume we need to create canvas for Webflow
       })
-    }
+    })
   }
 }
 
 // --- Execute Initialization ---
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    initializeSimulations()
-  })
+  document.addEventListener('DOMContentLoaded', initializeSimulations)
 } else {
   initializeSimulations()
+}
+
+// Add this helper function near the top of the file, after the imports
+// Make sure there are no duplicate versions of this function in the file
+function extractOrbitParams(params) {
+  const orbitParams = {}
+  // Copy only orbit-specific parameters
+  for (const key in params) {
+    // Skip energy-specific keys
+    if (
+      ![
+        'simulationType',
+        'particleAmount',
+        'particleSize',
+        'particleSpeed',
+        'particleColorHex',
+        'backgroundColorHex',
+        'boundaryRadius',
+        'canvasSize',
+        'canvasScale',
+        'particleForce',
+        'metaballThreshold',
+      ].includes(key)
+    ) {
+      orbitParams[key] = params[key]
+    }
+  }
+  return orbitParams
+}
+
+// Add this near the end of the file, before the initialization code
+window.setEnergyMode = function (modeId) {
+  console.log(`Direct webflow trigger: Setting energy mode to ${modeId}`)
+  loadModeToPreview(modeId)
+
+  // Force orbit visibility to true when loaded this way
+  isOrbitLayerVisible = true
+  console.log(
+    `Forcing orbit layer visibility to true for direct mode trigger ${modeId}`
+  )
 }

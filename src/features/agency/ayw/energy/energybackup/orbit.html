@@ -13,18 +13,6 @@
       <div id="controls">
         <h2 class="text-lg font-semibold mb-4 text-gray-700">Orbit Controls</h2>
 
-        <!-- {{ Add Mode Buttons Here }} -->
-        <div class="mb-4 flex space-x-2">
-          <button id="modeAButton" class="control-button flex-1">
-            Load Mode A
-          </button>
-          <button id="modeBButton" class="control-button flex-1">
-            Load Mode B
-          </button>
-        </div>
-        <hr class="my-4 border-gray-300" />
-        <!-- {{ End Add Mode Buttons Here }} -->
-
         <!-- Sun -->
         <label for="sunColor" class="control-label">Sun Color</label>
         <input type="color" id="sunColor" value="#f6ff47" />
@@ -303,49 +291,15 @@
 
     <!-- Link the orbit JavaScript module -->
     <script type="module">
-      // Import the initialization function
-      import { initializeOrbit } from './orbit.js'
-
-      // --- New: Get mode from URL ---
-      const urlParams = new URLSearchParams(window.location.search)
-      const modeId = urlParams.get('mode') // e.g., 'A', 'B', or null if not present
+      import { createOrbitScene } from './orbit.js'
 
       // Initialize
       const container = document.getElementById('container')
       if (container) {
-        // Pass the modeId to initializeOrbit.
-        // If modeId is null or invalid, initializeOrbit will use defaults.
-        initializeOrbit({ targetContainer: container }, null, modeId)
-
-        if (modeId) {
-          console.log(
-            `Orbit HTML: Attempting to initialize with mode '${modeId}' from URL.`
-          )
-        } else {
-          console.log(
-            'Orbit HTML: Initializing with default parameters (no mode specified in URL).'
-          )
-        }
+        createOrbitScene(container) // Pass the container
       } else {
         console.error('Orbit HTML: Main container #container not found!')
       }
-
-      // --- New: Add Mode Button Listeners ---
-      const modeAButton = document.getElementById('modeAButton')
-      const modeBButton = document.getElementById('modeBButton')
-
-      if (modeAButton) {
-        modeAButton.addEventListener('click', () => {
-          window.location.search = '?mode=A'
-        })
-      }
-
-      if (modeBButton) {
-        modeBButton.addEventListener('click', () => {
-          window.location.search = '?mode=B'
-        })
-      }
-      // --- End Add Mode Button Listeners ---
     </script>
   </body>
 </html>

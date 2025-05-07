@@ -1,11 +1,32 @@
 import * as THREE from 'three'
 // --- Import MeshLine using named imports as per documentation ---
 import { MeshLine, MeshLineMaterial } from 'three.meshline'
+import modesDataFromFile from './energyModes.json'
 
-let scene, camera, renderer, container, canvas
-// let animationRunning = true // Control play/pause
+let orbitScene,
+  orbitCamera,
+  orbitRenderer,
+  orbitContainer,
+  orbitCanvas,
+  radarLineMaterialRef // Keep radar material reference accessible
+let isStandaloneMode = false // Track mode
+let internalAnimationLoopId = null // ID for standalone animation loop
+const clock = new THREE.Clock() // Central clock for delta time
+
 const PHI = 1.618 // Golden Ratio
 const TRANSITION_ANGLE = Math.PI / 36 // Angle for fade transition (5 degrees)
+
+// --- Add missing constants definitions here ---
+const dayNames = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+]
+const daySegmentAngle = (Math.PI * 2) / 6 // Angle per day segment (60 degrees)
+// --- End of added constants ---
 
 // Base speed for PLANET exponential calculation
 const defaultPlanetActualSpeed = 0.1
@@ -15,57 +36,56 @@ const planetSpeedBase = defaultPlanetActualSpeed / Math.pow(PHI, 5 - 1) // Slide
 const defaultMoonActualSpeed = 0.4 // Faster default for moons
 const moonSpeedBase = defaultMoonActualSpeed / Math.pow(PHI, 5 - 1) // Slider 5 -> 0.4
 
-let orbitParams = {
-  // Default parameters for the orbit animation
+// --- Module-level defaults ---
+// Keep these as a reference, but the function will prioritize passed params
+const defaultInternalOrbitParams = {
   enabled: true,
-  showSun: true, // New parameter for sun visibility
+  showSun: true,
   sunColor: 0xf6ff47,
   planetColor: 0x607d8b,
   showMoon1: true,
   moon1Color: 0xff3d23,
   showMoon2: true,
   moon2Color: 0x0189d7,
-  // Store the *actual* speeds used for animation
-  orbitSpeed: defaultPlanetActualSpeed, // Planet's speed around sun
-  moonOrbitSpeed: defaultMoonActualSpeed, // Moons' speed around planet
-  // --- NEW Line Parameters ---
+  orbitSpeed: defaultPlanetActualSpeed,
+  moonOrbitSpeed: defaultMoonActualSpeed,
   mainOrbitColor: 0xd1e7de,
-  mainOrbitThickness: 6, // Default thickness in pixels now
-  radarColor: 0xa0a0a0, // Default radar color
-  radarThickness: 1, // Default radar thickness in pixels now
-  // --- NEW Delivery Day Parameters ---
+  mainOrbitThickness: 6,
+  radarColor: 0xa0a0a0,
+  radarThickness: 1,
   activeDeliveryDays: {
-    monday: false,
-    tuesday: false,
-    wednesday: false,
-    thursday: false,
-    friday: false,
-    saturday: false,
+    /* Default days */
   },
-  planetActiveColor: 0xff0000, // Default active color (red)
-  // --- NEW Radar Visibility Mode ---
-  radarVisibilityMode: 'always', // 'always' or 'activeDays'
-  // --- Internal Parameters ---
+  planetActiveColor: 0xeeff00,
+  radarVisibilityMode: 'activeDays',
   canvasSize: 800,
-  // -- New internal constants for geometry --
-  sunSize: 0.5, // Base size for the sun
-  mainOrbitRadius: 1.8, // Radius planet orbits sun
-  dayMarkLength: 0.15, // How far the day marks stick out
+  sunSize: 0.5,
+  mainOrbitRadius: 1.8,
+  dayMarkLength: 0.15,
   planetSize: 0.5 / PHI,
   moonSize: 0.5 / PHI / PHI,
   moonOrbitRadius: (0.5 / PHI) * 1.5,
-  // -- NEW: Radar Animation Internal Config --
-  numRadarLines: 4, // How many concentric lines
-  radarMaxRadiusFactor: 1, // Start slightly outside main orbit
-  radarMinRadius: 0.1, // Minimum radius before reset
-  radarAnimationSpeed: 0.6, // Units per second inward speed
-  dayMarkColor: 0xd1e7de, // <--- Add this line (default color)
+  numRadarLines: 3,
+  radarMaxRadiusFactor: 1,
+  radarMinRadius: 0.3,
+  radarAnimationSpeed: 0.6,
+  dayMarkColor: 0xd1e7de,
+  radarFlowDirection: 'inward', // Changed from 'outward' to match energy.js default
+  radarSetsPerDay: 1, // New parameter: How many sets of waves per day
 }
+// Remove the module-level mutable orbitParams
+// let orbitParams = { ...defaultInternalOrbitParams }; // REMOVE THIS
 
 // --- Module-level variables for interpolation ---
 let basePlanetColorObject = new THREE.Color()
 let activePlanetColorObject = new THREE.Color()
-let radarLineMaterialRef = null // To hold the shared radar material
+
+// --- NEW: Module-level state for "Sets per Day" logic ---
+let currentSimulatedDayIndex = -1 // Tracks the current day (0-5) for 'always' mode's per-day count
+let setsFiredForContinuousLoop = 0 // Counter for sets triggered in the current day - FOR 'always' mode
+let setsFiredInActiveDayBurst = 0 // Counter for sets fired in the current 'activeDays' burst
+let activeDayBurstInitiated = false // Has a burst been started for the current active day period?
+let allLinesPreviouslyCompleted = true // Helper to detect when a set *just* finished.
 
 // Helper to update value display spans (moved from HTML)
 function updateValueDisplay(spanId, value, precision = 3) {
@@ -126,6 +146,17 @@ function setupOrbitControls(initialParams) {
     'input[name="radarVisibilityMode"]'
   )
   const dayMarkColorPicker = document.getElementById('dayMarkColor')
+  // NEW: Radar Flow Direction Refs
+  const radarFlowDirectionRadios = document.querySelectorAll(
+    'input[name="radarFlowDirection"]'
+  )
+  // NEW: Radar Animation Speed Control Refs
+  const radarAnimationSpeedSlider = document.getElementById(
+    'radarAnimationSpeed'
+  )
+  const radarAnimationSpeedValueSpan = document.getElementById(
+    'radarAnimationSpeedValue'
+  )
 
   // --- MOVED Helpers Definition Up ---
   const setupRadioControl = (radios, value) => {
@@ -196,6 +227,8 @@ function setupOrbitControls(initialParams) {
     radarVisibilityModeRadios,
     initialParams.radarVisibilityMode
   )
+  // NEW: Setup Radar Flow Direction
+  setupRadioControl(radarFlowDirectionRadios, initialParams.radarFlowDirection)
   // NEW: Setup Delivery Day Controls
   if (deliveryDayCheckboxes) {
     deliveryDayCheckboxes.forEach((checkbox) => {
@@ -211,15 +244,32 @@ function setupOrbitControls(initialParams) {
   setupColorControl(planetActiveColorPicker, initialParams.planetActiveColor)
   setupColorControl(dayMarkColorPicker, initialParams.dayMarkColor)
 
+  // NEW: Setup Radar Animation Speed Slider
+  if (
+    radarAnimationSpeedSlider &&
+    initialParams.radarAnimationSpeed !== undefined
+  ) {
+    setupSlider(
+      radarAnimationSpeedSlider,
+      'radarAnimationSpeedValue',
+      initialParams.radarAnimationSpeed,
+      2 // Precision for display
+    )
+  }
+
   if (playStopButton) {
     console.log('Play/Stop button found, attaching event listener.')
-    playStopButton.textContent = initialParams.enabled ? 'Stop' : 'Play'
+    playStopButton.textContent = initialParams.enabled ? 'Stop' : 'Play' // Uses initialParams for initial setup
     playStopButton.addEventListener('click', () => {
+      // Read current state from defaultInternalOrbitParams
+      const currentEnabledState = defaultInternalOrbitParams.enabled
+      const newEnabledState = !currentEnabledState
       console.log(
-        'Play/Stop button clicked. Current state:',
-        orbitParams.enabled
+        'Play/Stop button clicked. Current state was:',
+        currentEnabledState,
+        'New state:',
+        newEnabledState
       )
-      const newEnabledState = !orbitParams.enabled
       playStopButton.textContent = newEnabledState ? 'Stop' : 'Play'
       updateOrbitParameters({ enabled: newEnabledState })
     })
@@ -331,10 +381,15 @@ function setupOrbitControls(initialParams) {
       checkbox.addEventListener('change', (e) => {
         const day = e.target.value
         const isChecked = e.target.checked
-        // Create an update object dynamically
+        // Read current activeDeliveryDays from defaultInternalOrbitParams
+        const currentActiveDays = defaultInternalOrbitParams.activeDeliveryDays
         const update = {
           activeDeliveryDays: {
-            ...orbitParams.activeDeliveryDays,
+            // Ensure currentActiveDays is an object before spreading
+            ...(typeof currentActiveDays === 'object' &&
+            currentActiveDays !== null
+              ? currentActiveDays
+              : {}),
             [day]: isChecked,
           },
         }
@@ -364,25 +419,150 @@ function setupOrbitControls(initialParams) {
     dayMarkColorPicker.addEventListener('input', (e) => {
       updateOrbitParameters({ dayMarkColor: e.target.value })
     })
+
+  // NEW: Radar Flow Direction Listener
+  if (radarFlowDirectionRadios) {
+    radarFlowDirectionRadios.forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          // Add a log to confirm this listener fires and what value it's sending
+          console.log(
+            '[orbit.js setupOrbitControls] Radar flow changed to:',
+            e.target.value
+          )
+          updateOrbitParameters({ radarFlowDirection: e.target.value }) // 'inward' or 'outward'
+        }
+      })
+    })
+  }
+
+  // NEW: Radar Animation Speed Listener
+  if (radarAnimationSpeedSlider) {
+    radarAnimationSpeedSlider.addEventListener('input', (e) => {
+      const speed = parseFloat(e.target.value)
+      updateValueDisplay('radarAnimationSpeedValue', speed, 2)
+      updateOrbitParameters({ radarAnimationSpeed: speed })
+    })
+  }
 }
 
-// Function to create the main orbit scene
-function createOrbitScene(targetContainer) {
-  if (!targetContainer) {
-    console.error('Orbit Error: Target container not provided.')
-    return
+// After the defaultInternalOrbitParams definition, add:
+let savedModes = {}
+
+// Add a function to load modes (similar to energy.js)
+function loadOrbitModes() {
+  try {
+    savedModes = modesDataFromFile
+    console.log('Orbit: Successfully loaded modes:', savedModes)
+
+    // Optional: ensure all required orbit parameters exist
+    const ensureOrbitDefaults = (modeKey) => {
+      if (!savedModes[modeKey]) return
+
+      // Add any missing parameters from defaults
+      for (const key in defaultInternalOrbitParams) {
+        if (savedModes[modeKey][key] === undefined) {
+          savedModes[modeKey][key] = defaultInternalOrbitParams[key]
+        }
+      }
+    }
+
+    ensureOrbitDefaults('A')
+    ensureOrbitDefaults('B')
+  } catch (error) {
+    console.error('Orbit: Failed to process imported energyModes.json:', error)
   }
-  container = targetContainer
+}
 
-  // --- Basic Scene Setup ---
-  scene = new THREE.Scene()
-  // Let's keep the background transparent for now, assuming layering later
-  // scene.background = new THREE.Color(0xedf7ee);
+// Call this function early
+loadOrbitModes()
 
+// Modify initializeOrbit to accept an optional modeId
+function initializeOrbit(options = {}, initialParams = null, modeId = null) {
+  // If modeId is provided, use parameters from that mode
+  if (modeId && savedModes[modeId]) {
+    initialParams = extractOrbitParamsFromMode(savedModes[modeId])
+    console.log(`Orbit: Using parameters from mode ${modeId}`)
+  }
+
+  // --- Cleanup previous instance if exists ---
+  if (internalAnimationLoopId) {
+    cancelAnimationFrame(internalAnimationLoopId)
+    internalAnimationLoopId = null
+  }
+  if (orbitCanvas && orbitContainer && orbitContainer.contains(orbitCanvas)) {
+    orbitContainer.removeChild(orbitCanvas)
+  }
+  // Clear listeners? Depends on how robust re-initialization needs to be.
+  // window.removeEventListener('resize', onWindowResize, false);
+
+  // --- Determine Parameters for THIS instance ---
+  // Start with internal defaults, then merge initialParams if provided
+  let instanceParams = JSON.parse(JSON.stringify(defaultInternalOrbitParams)) // Deep clone defaults
+
+  if (initialParams && typeof initialParams === 'object') {
+    console.log('initializeOrbit received initialParams:', initialParams)
+    // Merge provided params OVER the cloned defaults for this instance
+    const mergeDeep = (target, source) => {
+      for (const key in source) {
+        if (source.hasOwnProperty(key)) {
+          const targetValue = target[key]
+          const sourceValue = source[key]
+
+          if (
+            sourceValue &&
+            typeof sourceValue === 'object' &&
+            !Array.isArray(sourceValue) && // Ensure it's not an array
+            targetValue &&
+            typeof targetValue === 'object' &&
+            !Array.isArray(targetValue)
+          ) {
+            // Deep merge for nested objects
+            mergeDeep(targetValue, sourceValue)
+          } else if (sourceValue !== undefined) {
+            // Assign non-object values or replace if target is not an object
+            target[key] = sourceValue
+          }
+        }
+      }
+    }
+    mergeDeep(instanceParams, initialParams)
+    console.log(
+      'instanceParams after merge in initializeOrbit:',
+      instanceParams
+    )
+  } else {
+    console.log(
+      'initializeOrbit using internal defaults as initialParams was null.'
+    )
+  }
+  // --- End Parameter Determination ---
+  console.log(
+    'Final instanceParams for initialization:',
+    JSON.stringify(instanceParams)
+  ) // Log the whole thing
+  // Add this specific log:
+  console.log(
+    '[initializeOrbit] instanceParams.activeDeliveryDays BEFORE update:',
+    JSON.stringify(instanceParams.activeDeliveryDays)
+  )
+
+  // --- NEW: Synchronize shared state for the animation loop ---
+  updateOrbitParameters(instanceParams)
+  // --- End NEW ---
+
+  // Add this log AFTER the update call:
+  console.log(
+    '[initializeOrbit] defaultInternalOrbitParams.activeDeliveryDays AFTER update:',
+    JSON.stringify(defaultInternalOrbitParams.activeDeliveryDays)
+  )
+
+  // --- Setup Scene and Camera ---
+  orbitScene = new THREE.Scene()
   // Use OrthographicCamera for a 2D look
   const aspect = 1 // Assuming square canvas
   const frustumSize = 5 // Adjust this to control zoom level relative to object sizes
-  camera = new THREE.OrthographicCamera(
+  orbitCamera = new THREE.OrthographicCamera(
     (frustumSize * aspect) / -2,
     (frustumSize * aspect) / 2,
     frustumSize / 2,
@@ -390,108 +570,180 @@ function createOrbitScene(targetContainer) {
     0.1,
     100
   )
-  camera.position.z = 10 // Look down the Z axis
+  orbitCamera.position.z = 10 // Look down the Z axis
 
-  // --- Canvas and Renderer ---
-  canvas = document.createElement('canvas')
-  canvas.classList.add('orbit-simulation-canvas')
-  container.appendChild(canvas)
-  setupCanvasCSS(container, canvas) // Use the corrected CSS setup
+  // --- Determine Mode and Setup Renderer/Canvas ---
+  if (options.targetContainer) {
+    // --- Standalone Mode ---
+    isStandaloneMode = true
+    orbitContainer = options.targetContainer
+    orbitCanvas = document.createElement('canvas')
+    orbitCanvas.classList.add('orbit-simulation-canvas')
+    orbitContainer.appendChild(orbitCanvas)
+    setupCanvasCSS(orbitContainer, orbitCanvas) // Apply CSS
 
-  renderer = new THREE.WebGLRenderer({
-    canvas: canvas,
-    antialias: true,
-    alpha: true, // Make canvas transparent
-  })
-  renderer.setSize(orbitParams.canvasSize, orbitParams.canvasSize, false)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.setClearColor(0x000000, 0) // Transparent background
+    orbitRenderer = new THREE.WebGLRenderer({
+      canvas: orbitCanvas,
+      antialias: true,
+      alpha: true,
+    })
+    orbitRenderer.setSize(
+      instanceParams.canvasSize,
+      instanceParams.canvasSize,
+      false
+    )
+    orbitRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    orbitRenderer.setClearColor(0x000000, 0) // Transparent background
 
-  // --- Create Scene Elements ---
+    console.log('Orbit Initialized: Standalone Mode')
+  } else if (options.existingRenderer) {
+    // --- Integration Mode ---
+    isStandaloneMode = false
+    orbitRenderer = options.existingRenderer // Use the provided renderer
+    orbitContainer = null
+    orbitCanvas = null
+    console.log('Orbit Initialized: Integration Mode')
+  } else {
+    console.error(
+      'Orbit Initialization Error: Must provide targetContainer (standalone) or existingRenderer (integration).'
+    )
+    return // Stop initialization
+  }
 
+  // --- Create Scene Elements (Common to both modes) ---
+  // These will now use the potentially updated orbitParams from the merge above
   // Material definitions (reusable)
+
+  // Log values used for Sun Material
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.sunColor: ${new THREE.Color(
+      instanceParams.sunColor
+    ).getHexString()}, showSun: ${instanceParams.showSun}`
+  )
   const sunMaterial = new THREE.MeshBasicMaterial({
-    color: orbitParams.sunColor,
-    depthTest: true, // Default, but explicit
-    depthWrite: true, // Default, but explicit
-  })
-  const planetMaterial = new THREE.MeshBasicMaterial({
-    color: orbitParams.planetColor,
-    depthTest: true, // Default, but explicit
-    depthWrite: true, // Default, but explicit
-  })
-  const moon1Material = new THREE.MeshBasicMaterial({
-    color: orbitParams.moon1Color,
-    depthTest: true, // Default, but explicit
-    depthWrite: true, // Default, but explicit
-  })
-  const moon2Material = new THREE.MeshBasicMaterial({
-    color: orbitParams.moon2Color,
-    depthTest: true, // Default, but explicit
-    depthWrite: true, // Default, but explicit
+    color: instanceParams.sunColor, // Use instanceParams
+    depthTest: true,
+    depthWrite: true,
   })
 
-  // Orbit/Day Marks Material - REMOVE transparency settings
+  // Log values used for Planet Material
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.planetColor: ${new THREE.Color(
+      instanceParams.planetColor
+    ).getHexString()}`
+  )
+  const planetMaterial = new THREE.MeshBasicMaterial({
+    color: instanceParams.planetColor, // Use instanceParams
+    depthTest: true,
+    depthWrite: true,
+  })
+
+  // Log values used for Moon1 Material
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.moon1Color: ${new THREE.Color(
+      instanceParams.moon1Color
+    ).getHexString()}, showMoon1: ${instanceParams.showMoon1}`
+  )
+  const moon1Material = new THREE.MeshBasicMaterial({
+    color: instanceParams.moon1Color, // Use instanceParams
+    depthTest: true,
+    depthWrite: true,
+  })
+
+  // Log values used for Moon2 Material
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.moon2Color: ${new THREE.Color(
+      instanceParams.moon2Color
+    ).getHexString()}, showMoon2: ${instanceParams.showMoon2}`
+  )
+  const moon2Material = new THREE.MeshBasicMaterial({
+    color: instanceParams.moon2Color, // Use instanceParams
+    depthTest: true,
+    depthWrite: true,
+  })
+
+  // Log values used for Orbit Line Material
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.mainOrbitColor: ${new THREE.Color(
+      instanceParams.mainOrbitColor
+    ).getHexString()}, mainOrbitThickness: ${instanceParams.mainOrbitThickness}`
+  )
   const orbitLineMaterial = new MeshLineMaterial({
-    color: orbitParams.mainOrbitColor,
-    lineWidth: orbitParams.mainOrbitThickness,
+    color: instanceParams.mainOrbitColor, // Use instanceParams
+    lineWidth: instanceParams.mainOrbitThickness, // Use instanceParams
     resolution: new THREE.Vector2(
-      orbitParams.canvasSize,
-      orbitParams.canvasSize
+      instanceParams.canvasSize,
+      instanceParams.canvasSize
     ),
     sizeAttenuation: 0,
-    transparent: false, // Orbit line is opaque
-    depthTest: true, // Enable depth test
-    depthWrite: true, // Write to depth buffer
+    transparent: false,
+    depthTest: true,
+    depthWrite: true,
   })
 
-  // --- UPDATED Radar Material ---
-  // Use the imported MeshLineMaterial directly
+  // Log values used for Radar Line Material
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.radarColor: ${new THREE.Color(
+      instanceParams.radarColor
+    ).getHexString()}, radarThickness: ${instanceParams.radarThickness}`
+  )
   radarLineMaterialRef = new MeshLineMaterial({
-    color: orbitParams.radarColor,
-    lineWidth: orbitParams.radarThickness,
+    color: instanceParams.radarColor, // Use instanceParams
+    lineWidth: instanceParams.radarThickness, // Use instanceParams
     resolution: new THREE.Vector2(
-      orbitParams.canvasSize,
-      orbitParams.canvasSize
+      instanceParams.canvasSize,
+      instanceParams.canvasSize
     ),
     sizeAttenuation: 0,
     transparent: true,
     opacity: 1.0,
-    depthTest: true, // Keep depth test enabled
-    depthWrite: false, // Keep depth write disabled for transparency
+    depthTest: true,
+    depthWrite: false,
   })
 
-  // Geometry definitions (reusable)
-  const circleGeometry = (radius) => new THREE.CircleGeometry(radius, 32) // 32 segments for smooth circle
+  // Log values used for Day Mark Material (inside the loop)
+  // Add this log inside the day mark creation loop (around line 564)
+  // console.log(`[Orbit Init Setup] Day Mark ${i} using instanceParams.dayMarkColor: ${new THREE.Color(instanceParams.dayMarkColor).getHexString()}`);
+  // For simplicity, let's log it once before the loop
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.dayMarkColor for day marks: ${new THREE.Color(
+      instanceParams.dayMarkColor
+    ).getHexString()}`
+  )
 
-  // NEW: Define geometry for a single day mark rectangle
-  const dayMarkWidth = 0.02 // Adjust world units as needed
-  const dayMarkHeight = 0.16 // Adjust world units as needed
+  // Log speeds being used
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.orbitSpeed: ${instanceParams.orbitSpeed}`
+  )
+  console.log(
+    `[Orbit Init Setup] Using instanceParams.moonOrbitSpeed: ${instanceParams.moonOrbitSpeed}`
+  )
+
+  // Geometry definitions (reusable)
+  const circleGeometry = (radius) => new THREE.CircleGeometry(radius, 32)
+  const dayMarkWidth = 0.02
+  const dayMarkHeight = 0.16
   const dayMarkGeometry = new THREE.PlaneGeometry(dayMarkWidth, dayMarkHeight)
 
-  // NEW: Base Radar Circle Geometry (radius 1, scaled later)
+  // Radar Base Geometry
   const radarBasePoints = []
   const radarDivisions = 64
   for (let i = 0; i <= radarDivisions; i++) {
     const angle = (i / radarDivisions) * Math.PI * 2
-    radarBasePoints.push(
-      Math.cos(angle), // Radius 1
-      Math.sin(angle), // Radius 1
-      0 // Z coordinate
-    )
+    radarBasePoints.push(Math.cos(angle), Math.sin(angle), 0)
   }
   const radarBaseLineGeometry = new MeshLine()
-  radarBaseLineGeometry.setPoints(radarBasePoints, (p) => 1) // Constant width profile
+  radarBaseLineGeometry.setPoints(radarBasePoints, (p) => 1)
 
   // 1. Sun
   const sun = new THREE.Mesh(
-    circleGeometry(orbitParams.sunSize / 2),
+    circleGeometry(instanceParams.sunSize / 2), // Use instanceParams
     sunMaterial
   )
   sun.name = 'sun'
-  sun.position.z = 1 // Closer to camera
-  sun.visible = orbitParams.showSun // Set initial visibility
-  scene.add(sun)
+  sun.position.z = 2
+  sun.visible = instanceParams.showSun // Use instanceParams
+  orbitScene.add(sun)
 
   // 2. Main Orbit Path
   const orbitPoints = []
@@ -499,463 +751,712 @@ function createOrbitScene(targetContainer) {
   for (let i = 0; i <= divisions; i++) {
     const angle = (i / divisions) * Math.PI * 2
     orbitPoints.push(
-      Math.cos(angle) * orbitParams.mainOrbitRadius,
-      Math.sin(angle) * orbitParams.mainOrbitRadius,
-      0 // Z coordinate
+      Math.cos(angle) * instanceParams.mainOrbitRadius, // Use instanceParams
+      Math.sin(angle) * instanceParams.mainOrbitRadius, // Use instanceParams
+      0
     )
   }
-  // Use MeshLine for geometry
-  const mainOrbitLineGeometry = new MeshLine() // Use MeshLine directly
-  mainOrbitLineGeometry.setPoints(orbitPoints, (p) => 1) // p=>1 gives constant width
-  const mainOrbitPath = new THREE.Mesh(mainOrbitLineGeometry, orbitLineMaterial) // Pass MeshLine instance as geometry
+  const mainOrbitLineGeometry = new MeshLine()
+  mainOrbitLineGeometry.setPoints(orbitPoints, (p) => 1)
+  const mainOrbitPath = new THREE.Mesh(mainOrbitLineGeometry, orbitLineMaterial)
   mainOrbitPath.name = 'mainOrbitPath'
-  mainOrbitPath.position.z = 0.01 // Further from camera
-  scene.add(mainOrbitPath)
+  mainOrbitPath.position.z = 1
+  orbitScene.add(mainOrbitPath)
 
-  // --- NEW: Create Day Marks using PlaneGeometry ---
+  // 3. Day Marks
   const numDayMarks = 6
   const dayMarksGroup = new THREE.Group()
   dayMarksGroup.name = 'dayMarksGroup'
-  scene.add(dayMarksGroup) // Group itself doesn't need Z
-
-  // Rotate the entire day mark arrangement so the first gap (Monday) starts at 12 o'clock.
-  const dayMarkRotationOffset = Math.PI / 2 // Changed from Math.PI / -2
-
+  orbitScene.add(dayMarksGroup)
+  const dayMarkRotationOffset = Math.PI / 2
   for (let i = 0; i < numDayMarks; i++) {
     const angle = (i / numDayMarks) * Math.PI * 2 + dayMarkRotationOffset
-    // Position slightly outside the main orbit radius
     const positionRadius =
-      orbitParams.mainOrbitRadius + dayMarkHeight / 2 + 0.02 // Adjust offset as needed
-
-    // Create a Mesh for this mark
+      instanceParams.mainOrbitRadius + dayMarkHeight / 2 + 0.02
+    // Create material inside the loop to use the updated dayMarkColor
     const dayMarkMaterial = new THREE.MeshBasicMaterial({
-      color: orbitParams.dayMarkColor,
+      color: instanceParams.dayMarkColor, // Use instanceParams
       depthTest: true,
       depthWrite: true,
     })
-
     const dayMark = new THREE.Mesh(dayMarkGeometry, dayMarkMaterial)
-
-    // Position the mark
     dayMark.position.x = Math.cos(angle) * positionRadius
     dayMark.position.y = Math.sin(angle) * positionRadius
-    dayMark.position.z = 0.1 // Same depth as orbit line
-
-    // Rotate the mark to point outwards radially
+    dayMark.position.z = 1
     dayMark.rotation.z = angle + Math.PI / 2
-
     dayMarksGroup.add(dayMark)
   }
 
-  // 4. Planet Pivot (Parent for Planet and Moons)
+  // 4. Planet Pivot
   const planetPivot = new THREE.Object3D()
   planetPivot.name = 'planetPivot'
-  scene.add(planetPivot)
+  orbitScene.add(planetPivot)
 
   // 5. Planet
   const planet = new THREE.Mesh(
-    circleGeometry(orbitParams.planetSize / 2),
+    circleGeometry(instanceParams.planetSize / 2), // Use instanceParams
     planetMaterial
   )
   planet.name = 'planet'
-  // Start planet at the 12 o'clock position
-  planet.position.x = 0 // Changed from orbitParams.mainOrbitRadius
-  planet.position.y = orbitParams.mainOrbitRadius // Added
-  planet.position.z = 1 // Closer to camera
-  planetPivot.add(planet) // Add planet to its pivot
+  planet.position.y = instanceParams.mainOrbitRadius // Use instanceParams
+  planet.position.z = 2
+  planetPivot.add(planet)
 
   // 6. Moon 1 Pivot & Mesh
   const moon1Pivot = new THREE.Object3D()
   moon1Pivot.name = 'moon1Pivot'
-  planet.add(moon1Pivot) // Add moon pivot TO THE PLANET mesh
-
+  planet.add(moon1Pivot)
   const moon1 = new THREE.Mesh(
-    circleGeometry(orbitParams.moonSize / 2),
-    moon1Material
+    circleGeometry(instanceParams.moonSize / 2), // Use instanceParams
+    moon1Material // Use instanceParams
   )
   moon1.name = 'moon1'
-  moon1.position.x = orbitParams.moonOrbitRadius // Position relative to planet
-  moon1.position.z = 1 // Closer to camera (relative to planet's -0.1 is fine)
-  moon1.visible = orbitParams.showMoon1
-  moon1Pivot.add(moon1) // Add moon mesh to its pivot
+  moon1.position.x = instanceParams.moonOrbitRadius // Use instanceParams
+  moon1.position.z = 2
+  moon1.visible = instanceParams.showMoon1 // Use instanceParams
+  moon1Pivot.add(moon1)
 
   // 7. Moon 2 Pivot & Mesh
   const moon2Pivot = new THREE.Object3D()
   moon2Pivot.name = 'moon2Pivot'
-  moon2Pivot.rotation.z = Math.PI // Start 180 degrees opposite Moon 1
-  planet.add(moon2Pivot) // Add moon pivot TO THE PLANET mesh
-
+  moon2Pivot.rotation.z = Math.PI
+  planet.add(moon2Pivot)
   const moon2 = new THREE.Mesh(
-    circleGeometry(orbitParams.moonSize / 2),
-    moon2Material
+    circleGeometry(instanceParams.moonSize / 2), // Use instanceParams
+    moon2Material // Use instanceParams
   )
   moon2.name = 'moon2'
-  moon2.position.x = orbitParams.moonOrbitRadius // Position relative to planet
-  moon2.position.z = 1 // Closer to camera
-  moon2.visible = orbitParams.showMoon2
-  moon2Pivot.add(moon2) // Add moon mesh to its pivot
+  moon2.position.x = instanceParams.moonOrbitRadius // Use instanceParams
+  moon2.position.z = 2
+  moon2.visible = instanceParams.showMoon2 // Use instanceParams
+  moon2Pivot.add(moon2)
 
-  // --- MODIFIED: Radar Signal Group Setup ---
+  // 8. Radar Signal Group
   const radarSignalGroup = new THREE.Group()
   radarSignalGroup.name = 'radarSignalGroup'
-  // Set initial visibility based on mode (animate handles 'activeDays' on first frame)
-  radarSignalGroup.visible = orbitParams.radarVisibilityMode === 'always'
-  scene.add(radarSignalGroup)
+  // Set initial visibility based on the potentially updated mode
+  radarSignalGroup.visible = instanceParams.radarVisibilityMode === 'always' // Use instanceParams
+  orbitScene.add(radarSignalGroup)
 
-  // Create and add the radar lines
   const radarLines = []
   const radarMaxRadius =
-    orbitParams.mainOrbitRadius * orbitParams.radarMaxRadiusFactor
-  const radiusRange = radarMaxRadius - orbitParams.radarMinRadius
+    instanceParams.mainOrbitRadius * instanceParams.radarMaxRadiusFactor // Use instanceParams
+  const radarMinRadiusUsed = instanceParams.radarMinRadius // Use instanceParams for consistency
+  const radiusRange = radarMaxRadius - radarMinRadiusUsed
+  const numLinesInSet = instanceParams.numRadarLines // Should be 3 by default
+  const setSpreadFactor = 0.5 // How spread out lines are within a set (0: superimposed, 1: spread over full range allowed by factor)
 
-  for (let i = 0; i < orbitParams.numRadarLines; i++) {
+  for (let i = 0; i < numLinesInSet; i++) {
     const radarLineMesh = new THREE.Mesh(
       radarBaseLineGeometry,
-      radarLineMaterialRef
+      radarLineMaterialRef // Use instanceParams in material
     )
-    // Distribute initial scales evenly within the range
-    const initialScale =
-      orbitParams.radarMinRadius + (i / orbitParams.numRadarLines) * radiusRange
+
+    let initialScale
+    if (instanceParams.radarFlowDirection === 'inward') {
+      // For inward flow, set starts near maxScale, staggered slightly inwards
+      // Lines are indexed 0, 1, 2. Line 0 is outermost in the set.
+      initialScale =
+        radarMaxRadius -
+        (i / Math.max(1, numLinesInSet - 1)) * (radiusRange * setSpreadFactor)
+      initialScale = Math.max(radarMinRadiusUsed, initialScale)
+    } else {
+      // 'outward'
+      // For outward flow, set starts near minScale, staggered slightly outwards
+      // Line 0 is innermost in the set.
+      initialScale =
+        radarMinRadiusUsed +
+        (i / Math.max(1, numLinesInSet - 1)) * (radiusRange * setSpreadFactor)
+      initialScale = Math.min(radarMaxRadius, initialScale)
+    }
+    // If numLinesInSet is 1, the (i / Math.max(1, numLinesInSet - 1)) becomes 0/1=0, so it starts at min/max.
+    if (numLinesInSet === 1) {
+      initialScale =
+        instanceParams.radarFlowDirection === 'inward'
+          ? radarMaxRadius
+          : radarMinRadiusUsed
+    }
+
     radarLineMesh.scale.set(initialScale, initialScale, 1)
     radarLineMesh.name = `radarLine_${i}`
-    radarLineMesh.position.z = 0.0 // Middle depth
+    radarLineMesh.position.z = 0.1
+    radarLineMesh.userData.hasCompletedCycle = false // New state for set logic
+    // Store its calculated initial scale for consistent resets
+    // radarLineMesh.userData.initialCalculatedScale = initialScale; // We can recalculate on reset
+
     radarSignalGroup.add(radarLineMesh)
     radarLines.push(radarLineMesh)
   }
-  // Store the array on the group for easy access in animate function
   radarSignalGroup.userData.lines = radarLines
 
-  // --- NEW: Initialize Color Objects ---
-  basePlanetColorObject.setHex(orbitParams.planetColor)
-  activePlanetColorObject.setHex(orbitParams.planetActiveColor)
+  // --- Initialize Color Objects ---
+  // .set() is already correctly using instanceParams thanks to the previous fix
+  basePlanetColorObject.set(instanceParams.planetColor)
+  activePlanetColorObject.set(instanceParams.planetActiveColor)
 
-  // --- Setup Controls ---
-  setupOrbitControls(orbitParams) // Call the controls setup
+  // --- Mode-Specific Final Steps ---
+  if (isStandaloneMode) {
+    // Setup Controls (only if UI elements exist in standalone HTML)
+    // Pass the potentially updated orbitParams to setup controls correctly
+    setupOrbitControls(instanceParams) // UI setup still uses the local instanceParams
+    // Start Animation Loop (only for standalone)
+    startInternalAnimationLoop() // Animation loop will now read the synced shared state
+    // Setup Resize Handling (only for standalone if needed)
+    window.addEventListener('resize', onWindowResize, false)
+  }
 
-  // --- Start Animation Loop ---
-  animate()
-
-  // --- Resize Handling ---
-  window.addEventListener('resize', onWindowResize, false)
+  // Return value might be useful for integrator, but not strictly necessary
+  // return { scene: orbitScene, camera: orbitCamera };
 }
 
-// Function to update parameters (called by UI controls)
-function updateOrbitParameters(newParams) {
-  console.log('Updating orbit params:', newParams)
-  let needsVisualUpdate = false
+// Helper function to extract orbit-specific parameters
+function extractOrbitParamsFromMode(modeData) {
+  const orbitParams = {}
 
+  // Copy only orbit-relevant parameters
+  Object.keys(defaultInternalOrbitParams).forEach((key) => {
+    if (modeData[key] !== undefined) {
+      orbitParams[key] = modeData[key]
+    }
+  })
+
+  return orbitParams
+}
+
+// Export a new function to load a specific mode
+export function loadOrbitMode(modeId) {
+  if (!modeId || !savedModes[modeId]) {
+    console.error(`Orbit: Mode ${modeId} not found`)
+    return false
+  }
+
+  const orbitParams = extractOrbitParamsFromMode(savedModes[modeId])
+  updateOrbitParameters(orbitParams)
+  return true
+}
+
+// --- Update Parameters Function (Handles UI inputs or external calls) ---
+// >>> This function now needs to update the INSTANCE params <<<
+// How do we access the instanceParams specific to this orbit instance from here?
+// This reveals a flaw in the current structure for multiple instances.
+// For the single instance in energy.html, we can assume we modify a shared state,
+// but this isn't ideal for true multi-instance support.
+// Let's modify the SHARED orbitParams object for now, assuming only one orbit instance
+// is actively controlled via the energy.html UI.
+function updateOrbitParameters(newParams) {
+  // --- ADDED LOG 1 ---
+  console.log(
+    '[orbit.js] updateOrbitParameters received:',
+    JSON.parse(JSON.stringify(newParams)) // Log a clean copy
+  )
+  // --- END LOG ---
+
+  const targetParams = defaultInternalOrbitParams // Still using shared state for now
+
+  // Process parameters as before
   for (const key in newParams) {
-    if (orbitParams.hasOwnProperty(key)) {
+    if (targetParams.hasOwnProperty(key)) {
       const newValue = newParams[key]
       let processedValue = newValue
-      let skipGeneralComparison = false // Flag to skip final check
+      let skipGeneralComparison = false
 
-      // --- Color processing ---
+      // Color processing
       if (
-        typeof orbitParams[key] === 'number' &&
+        typeof targetParams[key] === 'number' &&
         typeof newValue === 'string' &&
         newValue.startsWith('#')
       ) {
         processedValue = new THREE.Color(newValue).getHex()
       }
-      // --- Other type processing (float, boolean, objects) ---
+      // Other type processing (keep existing logic)
       else if (
-        typeof orbitParams[key] === 'number' &&
+        typeof targetParams[key] === 'number' &&
         typeof newValue === 'string'
       ) {
         processedValue = parseFloat(newValue)
-        if (isNaN(processedValue)) continue // Skip invalid numbers
+        if (isNaN(processedValue)) continue
       } else if (
-        typeof orbitParams[key] === 'boolean' &&
+        typeof targetParams[key] === 'boolean' &&
         typeof newValue === 'string'
       ) {
         processedValue = newValue === 'true' || newValue === true
       } else if (
-        typeof orbitParams[key] === 'boolean' &&
+        typeof targetParams[key] === 'boolean' &&
         typeof newValue === 'boolean'
       ) {
         processedValue = newValue
       } else if (key === 'activeDeliveryDays' && typeof newValue === 'object') {
-        if (JSON.stringify(orbitParams[key]) !== JSON.stringify(newValue)) {
-          orbitParams[key] = { ...newValue }
-          console.log(`Orbit param ${key} updated to:`, orbitParams[key])
-        }
+        targetParams[key] = { ...newValue } // Always update
+        // --- ADDED LOG 2 ---
+        console.log(
+          `[orbit.js] Updated activeDeliveryDays in targetParams to:`,
+          JSON.parse(JSON.stringify(targetParams[key]))
+        )
+        // --- END LOG ---
         skipGeneralComparison = true
       } else if (
         key === 'radarVisibilityMode' &&
         typeof newValue === 'string'
       ) {
-        if (
-          orbitParams[key] !== newValue &&
-          (newValue === 'always' || newValue === 'activeDays')
-        ) {
-          orbitParams[key] = newValue
-          console.log(`Orbit param ${key} updated to:`, orbitParams[key])
+        if (newValue === 'always' || newValue === 'activeDays') {
+          targetParams[key] = newValue // Always update
+          // --- ADDED LOG 3 ---
+          console.log(
+            `[orbit.js] Updated radarVisibilityMode in targetParams to:`,
+            targetParams[key]
+          )
+          // --- END LOG ---
+        }
+        skipGeneralComparison = true
+      } else if (key === 'radarFlowDirection' && typeof newValue === 'string') {
+        if (newValue === 'inward' || newValue === 'outward') {
+          targetParams[key] = newValue // Always update
+          console.log(
+            `[orbit.js] Updated radarFlowDirection in targetParams to:`,
+            targetParams[key]
+          )
         }
         skipGeneralComparison = true
       }
 
-      // --- Apply processed value ---
-      // Special check for float speeds
-      if (key === 'orbitSpeed' || key === 'moonOrbitSpeed') {
-        if (Math.abs(orbitParams[key] - processedValue) > 0.0001) {
-          orbitParams[key] = processedValue
-          console.log(`Orbit param ${key} updated to:`, processedValue)
+      // Apply processed value to the targetParams (simplified)
+      if (!skipGeneralComparison) {
+        // Only log if value changed, but always update
+        if (targetParams[key] !== processedValue) {
+          // --- ADDED LOG 4 (conditional) ---
+          console.log(
+            `[orbit.js] Updating targetParams.${key} from ${targetParams[key]} to:`,
+            processedValue
+          )
+          // --- END LOG ---
         }
-      } else if (
-        !skipGeneralComparison &&
-        orbitParams[key] !== processedValue
-      ) {
-        orbitParams[key] = processedValue
-        console.log(`Orbit param ${key} updated to:`, processedValue)
-        if (key !== 'enabled') {
-          needsVisualUpdate = true
+        targetParams[key] = processedValue // Update regardless
 
-          // --- Update Color Objects if relevant color changed ---
-          if (key === 'planetColor') {
-            basePlanetColorObject.setHex(orbitParams.planetColor)
-          } else if (key === 'planetActiveColor') {
-            activePlanetColorObject.setHex(orbitParams.planetActiveColor)
-          }
+        // Update Color Objects if relevant
+        if (key === 'planetColor') {
+          basePlanetColorObject.setHex(targetParams.planetColor)
+        } else if (key === 'planetActiveColor') {
+          activePlanetColorObject.setHex(targetParams.planetActiveColor)
         }
       }
     }
   }
 
-  // Apply *other* visual updates if needed (thickness, non-interpolated colors etc.)
-  if (needsVisualUpdate && scene) {
+  // --- Always Apply Visual Updates if scene exists ---
+  if (orbitScene) {
+    // --- ADDED LOG 5 ---
     console.log(
-      'Applying non-interpolated visual updates. Current orbitParams:',
-      orbitParams
+      '[orbit.js] Applying visual updates based on targetParams:',
+      JSON.parse(JSON.stringify(targetParams))
     )
+    // --- END LOG ---
 
-    const sun = scene.getObjectByName('sun')
-    const moon1 = scene.getObjectByName('moon1')
-    const moon2 = scene.getObjectByName('moon2')
-    const radarGroup = scene.getObjectByName('radarSignalGroup')
-    const mainOrbitPathMesh = scene.getObjectByName('mainOrbitPath')
-    const dayMarksGroup = scene.getObjectByName('dayMarksGroup')
+    const sun = orbitScene.getObjectByName('sun')
+    const moon1 = orbitScene.getObjectByName('moon1')
+    const moon2 = orbitScene.getObjectByName('moon2')
+    const mainOrbitPathMesh = orbitScene.getObjectByName('mainOrbitPath')
+    const dayMarksGroup = orbitScene.getObjectByName('dayMarksGroup')
+    const planet = orbitScene.getObjectByName('planet')
 
-    // Update non-interpolated colors
-    if (sun?.material && newParams.sunColor !== undefined)
-      sun.material.color.setHex(orbitParams.sunColor)
-    if (moon1?.material && newParams.moon1Color !== undefined)
-      moon1.material.color.setHex(orbitParams.moon1Color)
-    if (moon2?.material && newParams.moon2Color !== undefined)
-      moon2.material.color.setHex(orbitParams.moon2Color)
+    // --- ADDED LOG 6 ---
+    console.log('[orbit.js] Found objects:', {
+      sun: !!sun,
+      moon1: !!moon1,
+      moon2: !!moon2,
+      mainOrbitPathMesh: !!mainOrbitPathMesh,
+      dayMarksGroup: !!dayMarksGroup,
+      planet: !!planet,
+    })
+    // --- END LOG ---
 
-    // Update visibility (Sun and Moons)
-    if (newParams.showSun !== undefined && sun)
-      sun.visible = orbitParams.showSun
-    if (newParams.showMoon1 !== undefined && moon1)
-      moon1.visible = orbitParams.showMoon1
-    if (newParams.showMoon2 !== undefined && moon2)
-      moon2.visible = orbitParams.showMoon2
+    // Ensure planet color is initialized
+    if (planet?.material instanceof THREE.MeshBasicMaterial) {
+      planet.material.color.copy(basePlanetColorObject)
+    }
 
-    // --- Update Day Mark Material Color ---
-    if (newParams.dayMarkColor !== undefined && dayMarksGroup) {
+    // Always update Materials/Visibility using targetParams
+    if (sun?.material) {
+      // --- ADDED LOG 7 ---
+      console.log(
+        `[orbit.js] Setting sun color to hex: ${new THREE.Color(
+          targetParams.sunColor
+        ).getHexString()}`
+      )
+      // --- END LOG ---
+      sun.material.color.setHex(targetParams.sunColor)
+    }
+    if (moon1?.material) moon1.material.color.setHex(targetParams.moon1Color)
+    if (moon2?.material) moon2.material.color.setHex(targetParams.moon2Color)
+
+    if (sun) sun.visible = targetParams.showSun
+    if (moon1) moon1.visible = targetParams.showMoon1
+    if (moon2) moon2.visible = targetParams.showMoon2
+
+    // Update Day Mark Material Color
+    if (dayMarksGroup) {
+      // --- ADDED LOG 8 ---
+      console.log(
+        `[orbit.js] Setting day marks color to hex: ${new THREE.Color(
+          targetParams.dayMarkColor
+        ).getHexString()}`
+      )
+      // --- END LOG ---
       dayMarksGroup.children.forEach((mark) => {
         if (
           mark instanceof THREE.Mesh &&
           mark.material instanceof THREE.MeshBasicMaterial
         ) {
-          mark.material.color.setHex(orbitParams.dayMarkColor)
+          mark.material.color.setHex(targetParams.dayMarkColor)
         }
       })
     }
 
-    // --- Update MeshLine Material Properties (Orbit Line) ---
+    // Update MeshLine Material Properties (Orbit Line)
     const orbitLineMaterialRef = mainOrbitPathMesh?.material
     if (orbitLineMaterialRef instanceof MeshLineMaterial) {
-      if (newParams.mainOrbitColor !== undefined) {
-        orbitLineMaterialRef.color.setHex(orbitParams.mainOrbitColor)
-      }
-      if (newParams.mainOrbitThickness !== undefined) {
-        orbitLineMaterialRef.uniforms.lineWidth.value =
-          orbitParams.mainOrbitThickness
-      }
+      // --- ADDED LOG 9 ---
+      console.log(
+        `[orbit.js] Setting orbit line color to hex: ${new THREE.Color(
+          targetParams.mainOrbitColor
+        ).getHexString()}, thickness: ${targetParams.mainOrbitThickness}`
+      )
+      // --- END LOG ---
+      orbitLineMaterialRef.color.setHex(targetParams.mainOrbitColor)
+      orbitLineMaterialRef.uniforms.lineWidth.value =
+        targetParams.mainOrbitThickness
     }
 
-    // --- Radar Line Updates (Color/Thickness Only) ---
+    // Radar Line Updates (Color/Thickness)
     if (radarLineMaterialRef instanceof MeshLineMaterial) {
-      if (newParams.radarColor !== undefined) {
-        radarLineMaterialRef.color.setHex(orbitParams.radarColor)
-      }
-      if (newParams.radarThickness !== undefined) {
-        radarLineMaterialRef.uniforms.lineWidth.value =
-          orbitParams.radarThickness
-      }
+      // --- ADDED LOG 10 ---
+      console.log(
+        `[orbit.js] Setting radar line color to hex: ${new THREE.Color(
+          targetParams.radarColor
+        ).getHexString()}, thickness: ${targetParams.radarThickness}`
+      )
+      // --- END LOG ---
+      console.log(
+        'Updating radar color to (hex):',
+        new THREE.Color(targetParams.radarColor).getHexString()
+      )
+      radarLineMaterialRef.color.setHex(targetParams.radarColor)
+      console.log('Updating radar thickness to:', targetParams.radarThickness)
+      radarLineMaterialRef.uniforms.lineWidth.value =
+        targetParams.radarThickness
     }
-  }
-}
 
-// Apply CSS (Similar to energy.js, maybe abstract later)
+    // Force material updates
+    if (sun?.material) sun.material.needsUpdate = true
+    if (moon1?.material) moon1.material.needsUpdate = true
+    if (moon2?.material) moon2.material.needsUpdate = true
+    if (orbitLineMaterialRef) orbitLineMaterialRef.needsUpdate = true
+    if (radarLineMaterialRef) radarLineMaterialRef.needsUpdate = true
+
+    // --- ADDED LOG 11 ---
+    console.log('[orbit.js] Visual updates applied.')
+    // --- END LOG ---
+  } else {
+    // --- ADDED LOG 12 ---
+    console.warn(
+      '[orbit.js] updateOrbitParameters called but orbitScene not found. Cannot apply visual updates.'
+    )
+    // --- END LOG ---
+  }
+} // --- End updateOrbitParameters ---
+
+// --- Canvas CSS Setup (Used only in Standalone) ---
 function setupCanvasCSS(targetContainer, targetCanvas) {
   if (!targetContainer || !targetCanvas) return
-  targetCanvas.style.display = 'block' // Keep as block
+  targetCanvas.style.display = 'block'
   const currentPosition = window.getComputedStyle(targetContainer).position
   if (currentPosition === 'static') {
-    targetContainer.style.position = 'relative' // Still potentially useful
+    targetContainer.style.position = 'relative'
   }
-  // Ensure container styles allow flex items to work
-  targetContainer.style.display = 'flex' // Make sure container is flex if not already
+  targetContainer.style.display = 'flex'
   targetContainer.style.aspectRatio = '1 / 1'
   targetContainer.style.maxWidth = targetContainer.style.maxWidth || '100%'
   targetContainer.style.maxHeight = targetContainer.style.maxHeight || '100%'
   targetContainer.style.margin = targetContainer.style.margin || '0 auto'
   targetContainer.style.overflow = 'hidden'
-
-  // Style canvas to work correctly within the flex container
-  targetCanvas.style.flexGrow = '1' // Allow canvas to grow
-  targetCanvas.style.width = 'auto' // Let flexbox handle width
-  targetCanvas.style.height = '100%' // Fill height
-  targetCanvas.style.objectFit = 'contain' // Maintain aspect ratio if needed
-
-  // REMOVED the absolute positioning that was hiding the controls
-  // targetCanvas.style.position = 'absolute'
-  // targetCanvas.style.top = '0'
-  // targetCanvas.style.left = '0'
-  // targetCanvas.style.pointerEvents = 'none'
+  targetCanvas.style.flexGrow = '1'
+  targetCanvas.style.width = 'auto'
+  targetCanvas.style.height = '100%'
+  targetCanvas.style.objectFit = 'contain'
 }
 
-// Resize handling
+// --- Resize Handling (Used only in Standalone) ---
 function onWindowResize() {
-  // Orthographic camera doesn't need aspect update like perspective
-  // Renderer size is fixed internally, CSS handles display size
+  // Only relevant if standalone needs responsive canvas sizing beyond CSS
+  // Or if resolution needs update for MeshLineMaterial (though currently fixed)
+  // console.log("Window resize detected - Standalone mode");
+  // Orthographic camera doesn't usually need aspect update
+  // Renderer size is fixed internally, CSS handles display scaling
 }
 
-// Animation Loop - Use separate speeds
-const clock = new THREE.Clock()
-// Array defining the order of days for calculation
-const dayNames = [
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-]
-const daySegmentAngle = (Math.PI * 2) / 6 // Angle per day segment (60 degrees)
+// --- NEW: Core Animation Update Logic ---
+// Needs access to the correct parameters for the instance.
+// Again, for simplicity with the current structure, we'll read from the shared defaults object.
+function updateOrbitAnimation(deltaTime) {
+  // Use the shared defaults object (targetParams from updateOrbitParameters)
+  const currentInstanceParams = defaultInternalOrbitParams
 
-function animate() {
-  requestAnimationFrame(animate)
-
-  if (!orbitParams.enabled) {
-    clock.getDelta()
+  if (!orbitScene || !currentInstanceParams.enabled) {
     return
   }
 
-  const deltaTime = clock.getDelta()
+  // --- Get references ---
+  const planetPivot = orbitScene.getObjectByName('planetPivot')
+  const moon1Pivot = orbitScene.getObjectByName('moon1Pivot')
+  const moon2Pivot = orbitScene.getObjectByName('moon2Pivot')
+  const planet = orbitScene.getObjectByName('planet')
+  const radarGroup = orbitScene.getObjectByName('radarSignalGroup')
+
+  if (!planetPivot || !planet) {
+    // console.warn('[updateOrbitAnimation] Missing planetPivot or planet object.');
+    return
+  }
+
+  // --- Animation Calculations ---
   const baseSpeedMultiplier = 5
-  const planetEffectiveSpeed = orbitParams.orbitSpeed * baseSpeedMultiplier
-  const moonEffectiveSpeed = orbitParams.moonOrbitSpeed * baseSpeedMultiplier
+  const planetEffectiveSpeed =
+    currentInstanceParams.orbitSpeed * baseSpeedMultiplier
+  const moonEffectiveSpeed =
+    currentInstanceParams.moonOrbitSpeed * baseSpeedMultiplier
 
-  const planetPivot = scene.getObjectByName('planetPivot')
-  const moon1Pivot = scene.getObjectByName('moon1Pivot')
-  const moon2Pivot = scene.getObjectByName('moon2Pivot')
-  const planet = scene.getObjectByName('planet')
-  const radarGroup = scene.getObjectByName('radarSignalGroup')
+  // --- Planet Rotation and Day Calculation ---
+  planetPivot.rotation.z -= deltaTime * planetEffectiveSpeed * 0.5
+  const pivotAngle = planetPivot.rotation.z
+  const dayProgressAngle =
+    ((-pivotAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  let dayIndex = Math.floor(dayProgressAngle / daySegmentAngle)
+  dayIndex = dayIndex % 6
+  const currentDayName = dayNames[dayIndex]
+  const angleWithinSegment = dayProgressAngle % daySegmentAngle
+  // --- End Day Calculation ---
 
+  // --- Day Change Detection (for 'always' mode's per-day set limit) ---
+  if (dayIndex !== currentSimulatedDayIndex) {
+    // console.log(`Day changed from ${currentSimulatedDayIndex} to ${dayIndex}. Resetting continuous loop count.`);
+    currentSimulatedDayIndex = dayIndex
+    setsFiredForContinuousLoop = 0
+  }
+
+  // --- Lerp Factor for Planet Color and Radar Opacity ---
   let isDayActive = false
-  let lerpFactor = 0.0 // Default to inactive state
+  let lerpFactor = 0.0
+  const activeDaysState = currentInstanceParams.activeDeliveryDays
 
-  if (planetPivot && planet) {
-    planetPivot.rotation.z -= deltaTime * planetEffectiveSpeed * 0.5
-
-    const currentAngle = planetPivot.rotation.z
-    const clockwiseAngle = (-currentAngle + 2 * Math.PI) % (2 * Math.PI)
-    let dayIndex = Math.floor(clockwiseAngle / daySegmentAngle)
-    dayIndex = dayIndex === 6 ? 0 : dayIndex
-    const currentDayName = dayNames[dayIndex]
-
-    isDayActive =
-      currentDayName && orbitParams.activeDeliveryDays[currentDayName] === true
-
-    // --- Calculate Transition ---
+  if (activeDaysState && typeof activeDaysState === 'object') {
+    isDayActive = currentDayName && activeDaysState[currentDayName] === true
     const nextDayIndex = (dayIndex + 1) % 6
     const nextDayName = dayNames[nextDayIndex]
-    const isNextDayActive = orbitParams.activeDeliveryDays[nextDayName] === true
-    const transitionOccurs = isDayActive !== isNextDayActive
+    const isNextDayActive = nextDayName && activeDaysState[nextDayName] === true
 
-    const angleWithinSegment = clockwiseAngle % daySegmentAngle
+    const transitionPointStart = TRANSITION_ANGLE
+    const transitionPointEnd = daySegmentAngle - TRANSITION_ANGLE
 
-    lerpFactor = isDayActive ? 1.0 : 0.0 // Base factor for current day
-
-    if (
-      transitionOccurs &&
-      angleWithinSegment > daySegmentAngle - TRANSITION_ANGLE
-    ) {
-      // We are in the transition zone before the next segment starts
-      const transitionProgress =
-        (angleWithinSegment - (daySegmentAngle - TRANSITION_ANGLE)) /
-        TRANSITION_ANGLE
-      if (isDayActive) {
-        // Fading out
-        lerpFactor = 1.0 - transitionProgress
+    if (isDayActive) {
+      if (!isNextDayActive) {
+        // Active day followed by INACTIVE day
+        if (angleWithinSegment > transitionPointEnd) {
+          lerpFactor = (daySegmentAngle - angleWithinSegment) / TRANSITION_ANGLE
+        } else {
+          lerpFactor = 1.0
+        }
       } else {
-        // Fading in
-        lerpFactor = transitionProgress
+        // Active day followed by ACTIVE day
+        lerpFactor = 1.0
       }
-      lerpFactor = Math.max(0, Math.min(1, lerpFactor)) // Clamp between 0 and 1
+    } else {
+      // Current day is INACTIVE
+      if (isNextDayActive) {
+        // Inactive day followed by ACTIVE day
+        if (angleWithinSegment > transitionPointEnd) {
+          lerpFactor =
+            (angleWithinSegment - transitionPointEnd) / TRANSITION_ANGLE
+        } else {
+          lerpFactor = 0.0
+        }
+      } else {
+        // Inactive day followed by INACTIVE day
+        lerpFactor = 0.0
+      }
     }
+    lerpFactor = Math.max(0.0, Math.min(1.0, lerpFactor))
+  } else {
+    // console.warn('[updateOrbitAnimation] activeDeliveryDays state is invalid.');
+    isDayActive = false
+    lerpFactor = 0.0
+  }
+  // --- End Lerp Factor ---
 
-    // --- Update planet color using lerp ---
+  // --- Planet Color Update ---
+  if (planet.material instanceof THREE.MeshBasicMaterial) {
     planet.material.color.lerpColors(
       basePlanetColorObject,
       activePlanetColorObject,
       lerpFactor
     )
-  } // End if (planetPivot && planet)
-
-  // --- Update Radar Visibility & Opacity ---
-  if (radarGroup && radarLineMaterialRef) {
-    if (orbitParams.radarVisibilityMode === 'activeDays') {
-      radarGroup.visible = lerpFactor > 0.001 // Make invisible if fully faded out
-      radarLineMaterialRef.uniforms.opacity.value = lerpFactor
-    } else {
-      // 'always' mode
-      radarGroup.visible = true
-      radarLineMaterialRef.uniforms.opacity.value = 1.0
-    }
   }
 
   // --- Moon Animation ---
-  if (moon1Pivot) {
-    moon1Pivot.rotation.z += deltaTime * moonEffectiveSpeed
-  }
-  if (moon2Pivot) {
-    moon2Pivot.rotation.z += deltaTime * moonEffectiveSpeed
-  }
+  if (moon1Pivot) moon1Pivot.rotation.z += deltaTime * moonEffectiveSpeed
+  if (moon2Pivot) moon2Pivot.rotation.z += deltaTime * moonEffectiveSpeed
 
-  // --- Radar Line Scaling Animation ---
-  if (radarGroup && radarGroup.visible && radarGroup.userData.lines) {
+  // --- Radar Line Animation Logic ---
+  if (radarGroup && radarGroup.userData.lines) {
     const lines = radarGroup.userData.lines
-    const speed = orbitParams.radarAnimationSpeed
-    const minScale = orbitParams.radarMinRadius
+    const speed = currentInstanceParams.radarAnimationSpeed
+    const minScale = currentInstanceParams.radarMinRadius
     const maxScale =
-      orbitParams.mainOrbitRadius * orbitParams.radarMaxRadiusFactor
+      currentInstanceParams.mainOrbitRadius *
+      currentInstanceParams.radarMaxRadiusFactor
+    const flowDirection = currentInstanceParams.radarFlowDirection
+    const numLinesInSet = currentInstanceParams.numRadarLines
+    const radiusRange = maxScale - minScale
+    const setSpreadFactor = 0.5
+    const setsParamValue = currentInstanceParams.radarSetsPerDay // How many sets in a loop or burst
+
+    let currentSetHasActivelyAnimatingLine = false
+    let allLinesHaveCompletedTheirCycleThisFrame = true
 
     lines.forEach((lineMesh) => {
-      // Decrease scale
-      lineMesh.scale.x -= speed * deltaTime
-      lineMesh.scale.y = lineMesh.scale.x // Keep it circular
+      if (lineMesh.userData.hasCompletedCycle) {
+        if (lineMesh.visible) lineMesh.visible = false
+      } else {
+        allLinesHaveCompletedTheirCycleThisFrame = false
+        currentSetHasActivelyAnimatingLine = true
 
-      // Optional: Fade out line as it shrinks
-      // ...
+        if (!lineMesh.visible) lineMesh.visible = true
 
-      // Reset if too small
-      if (lineMesh.scale.x <= minScale) {
-        lineMesh.scale.set(maxScale, maxScale, 1)
-        // Reset opacity if fading
-        // ...
+        if (flowDirection === 'inward') {
+          lineMesh.scale.x -= speed * deltaTime
+          if (lineMesh.scale.x <= minScale) {
+            lineMesh.scale.x = minScale
+            lineMesh.userData.hasCompletedCycle = true
+          }
+        } else {
+          lineMesh.scale.x += speed * deltaTime
+          if (lineMesh.scale.x >= maxScale) {
+            lineMesh.scale.x = maxScale
+            lineMesh.userData.hasCompletedCycle = true
+          }
+        }
+        lineMesh.scale.y = lineMesh.scale.x
       }
     })
-  }
 
-  // --- Render ---
-  renderer.render(scene, camera)
+    const aSetJustFinished =
+      allLinesHaveCompletedTheirCycleThisFrame && !allLinesPreviouslyCompleted
+    allLinesPreviouslyCompleted = allLinesHaveCompletedTheirCycleThisFrame
+
+    const resetAndStartSet = () => {
+      lines.forEach((lineMesh, i) => {
+        let resetScale
+        if (flowDirection === 'inward') {
+          resetScale =
+            maxScale -
+            (i / Math.max(1, numLinesInSet - 1)) *
+              (radiusRange * setSpreadFactor)
+          resetScale = Math.max(minScale, resetScale)
+        } else {
+          resetScale =
+            minScale +
+            (i / Math.max(1, numLinesInSet - 1)) *
+              (radiusRange * setSpreadFactor)
+          resetScale = Math.min(maxScale, resetScale)
+        }
+        if (numLinesInSet === 1)
+          resetScale = flowDirection === 'inward' ? maxScale : minScale
+
+        lineMesh.scale.set(resetScale, resetScale, 1)
+        lineMesh.userData.hasCompletedCycle = false
+        lineMesh.visible = true
+      })
+      allLinesPreviouslyCompleted = false
+      currentSetHasActivelyAnimatingLine = true
+    }
+
+    if (currentInstanceParams.radarVisibilityMode === 'always') {
+      radarGroup.visible = true
+      if (radarLineMaterialRef)
+        radarLineMaterialRef.uniforms.opacity.value = 1.0
+
+      if (
+        (aSetJustFinished || !currentSetHasActivelyAnimatingLine) &&
+        setsFiredForContinuousLoop < setsParamValue
+      ) {
+        resetAndStartSet()
+        setsFiredForContinuousLoop++
+      }
+    } else {
+      const radarIsVisuallyActive = isDayActive && lerpFactor > 0.1
+
+      radarGroup.visible = lerpFactor > 0.001
+      if (radarLineMaterialRef)
+        radarLineMaterialRef.uniforms.opacity.value = lerpFactor
+
+      if (radarIsVisuallyActive) {
+        if (!activeDayBurstInitiated) {
+          activeDayBurstInitiated = true
+          setsFiredInActiveDayBurst = 0
+
+          if (setsFiredInActiveDayBurst < setsParamValue) {
+            resetAndStartSet()
+            setsFiredInActiveDayBurst++
+          }
+        } else if (
+          (aSetJustFinished || !currentSetHasActivelyAnimatingLine) &&
+          setsFiredInActiveDayBurst < setsParamValue
+        ) {
+          resetAndStartSet()
+          setsFiredInActiveDayBurst++
+        }
+      } else {
+        if (activeDayBurstInitiated) {
+          activeDayBurstInitiated = false
+        }
+      }
+    }
+  }
+} // --- End updateOrbitAnimation ---
+
+// --- NEW: Scene Rendering Function ---
+// Renders the orbit scene onto the provided renderer
+function renderOrbitScene(rendererToUse) {
+  if (!rendererToUse || !orbitScene || !orbitCamera) {
+    // console.error("Cannot render orbit scene: Missing renderer, scene, or camera.");
+    return
+  }
+  // The calling function (internal loop or energy.js) should handle autoClear settings
+  rendererToUse.render(orbitScene, orbitCamera)
 }
 
+// --- NEW: Internal Animation Loop (Standalone Mode Only) ---
+function startInternalAnimationLoop() {
+  // Use the module-level clock
+  function loop() {
+    internalAnimationLoopId = requestAnimationFrame(loop)
+    const deltaTime = clock.getDelta() // Get delta time
+
+    // Update animation state (using the new dedicated function)
+    updateOrbitAnimation(deltaTime)
+
+    // Render the scene (using the new dedicated function and internal renderer)
+    if (orbitRenderer) {
+      // Standalone controls its own clearing
+      orbitRenderer.autoClear = true
+      renderOrbitScene(orbitRenderer)
+    }
+  }
+  // Stop any previous loop before starting
+  if (internalAnimationLoopId) {
+    cancelAnimationFrame(internalAnimationLoopId)
+  }
+  loop() // Start the new loop
+}
+
+// --- Speed Calculation Helpers (Keep as is) ---
 // Helper to calculate actual PLANET speed from slider value (1-10)
 function calculateActualPlanetSpeed(sliderValue) {
   const clampedSliderValue = Math.max(1, sliderValue)
@@ -985,4 +1486,13 @@ function calculateMoonSliderValue(actualSpeed) {
 }
 
 // --- Exports ---
-export { createOrbitScene, updateOrbitParameters }
+export {
+  initializeOrbit,
+  updateOrbitParameters, // Keep exporting for energy.js import
+  updateOrbitAnimation,
+  renderOrbitScene,
+  calculateActualPlanetSpeed,
+  calculatePlanetSliderValue,
+  calculateActualMoonSpeed,
+  calculateMoonSliderValue,
+}

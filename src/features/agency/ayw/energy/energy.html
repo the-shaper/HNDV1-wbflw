@@ -24,7 +24,9 @@
     >
       <!-- Controls Panel -->
       <div id="controls">
-        <h2 class="text-lg font-semibold mb-4 text-gray-700">Live Controls</h2>
+        <h2 class="text-lg font-semibold mb-4 text-gray-700">
+          Energy Simulation Controls
+        </h2>
 
         <!-- Simulation Type Selector (Only Metaball & Repel) -->
         <label class="control-label">Simulation Type:</label>
@@ -50,7 +52,16 @@
           </div>
         </div>
 
-        <!-- Shared Controls (Always Visible) -->
+        <!-- NEW: Orbit Layer Toggle -->
+        <div class="control-item mb-3">
+          <input type="checkbox" id="orbitLayerToggle" name="orbitVisible" />
+          <label for="orbitLayerToggle" class="control-label ml-2"
+            >Show Orbit Layer</label
+          >
+        </div>
+        <!-- End Orbit Layer Toggle -->
+
+        <!-- Shared Energy Controls (Always Visible) -->
         <div id="shared-controls">
           <label for="particleAmount" class="control-label"
             >Particle Amount (<span id="particleAmountValue">?</span>)</label
@@ -125,7 +136,7 @@
           />
         </div>
 
-        <!-- Metaball/Repel Specific Controls -->
+        <!-- Metaball/Repel Specific Energy Controls -->
         <div id="metaball-repel-controls" class="controls-set">
           <hr class="my-4 border-gray-300" />
           <h3 class="text-md font-semibold mb-2 text-gray-600">
@@ -168,6 +179,344 @@
             Liquid Settings (Inactive)
           </h3>
         </div>
+
+        <hr class="my-4 border-gray-300" />
+
+        <!-- === NEW: Orbit Controls Section === -->
+        <div id="orbit-controls-section" class="mt-4">
+          <h3 class="text-md font-semibold mb-2 text-gray-600">
+            Orbit Layer Settings
+          </h3>
+
+          <!-- Sun -->
+          <label for="sunColor" class="control-label">Sun Color</label>
+          <input type="color" id="sunColor" value="#f6ff47" />
+
+          <!-- Sun Visibility -->
+          <div class="mb-3">
+            <label class="control-label">Sun Visibility:</label>
+            <div class="radio-group">
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="sunEnabled"
+                  name="sunVisible"
+                  value="true"
+                  checked
+                />
+                <label for="sunEnabled">Visible</label>
+              </div>
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="sunDisabled"
+                  name="sunVisible"
+                  value="false"
+                />
+                <label for="sunDisabled">Hidden</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Planet -->
+          <label for="planetColor" class="control-label">Planet Color</label>
+          <input type="color" id="planetColor" value="#607D8B" />
+
+          <!-- Moons -->
+          <div class="mb-3">
+            <label class="control-label">Moon 1:</label>
+            <div class="radio-group">
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="moon1Enabled"
+                  name="moon1Visible"
+                  value="true"
+                  checked
+                />
+                <label for="moon1Enabled">Visible</label>
+              </div>
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="moon1Disabled"
+                  name="moon1Visible"
+                  value="false"
+                />
+                <label for="moon1Disabled">Hidden</label>
+              </div>
+            </div>
+          </div>
+          <label for="moon1Color" class="control-label">Moon 1 Color</label>
+          <input type="color" id="moon1Color" value="#FF3d23" />
+          <!-- Note: Color updated to match energy.js default -->
+
+          <div class="mb-3">
+            <label class="control-label">Moon 2:</label>
+            <div class="radio-group">
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="moon2Enabled"
+                  name="moon2Visible"
+                  value="true"
+                  checked
+                />
+                <label for="moon2Enabled">Visible</label>
+              </div>
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="moon2Disabled"
+                  name="moon2Visible"
+                  value="false"
+                />
+                <label for="moon2Disabled">Hidden</label>
+              </div>
+            </div>
+          </div>
+          <label for="moon2Color" class="control-label">Moon 2 Color</label>
+          <input type="color" id="moon2Color" value="#0189d7" />
+          <!-- Note: Color updated to match energy.js default -->
+
+          <!-- Speed -->
+          <label for="orbitSpeed" class="control-label"
+            >Orbit Speed (<span id="orbitSpeedValue">0.100</span>)</label
+          >
+          <input
+            type="range"
+            id="orbitSpeed"
+            min="1"
+            max="10"
+            step="1"
+            value="5"
+          />
+          <!-- Initial slider value (5) corresponds to default speed 0.1 -->
+
+          <label for="moonSpeed" class="control-label"
+            >Moons Speed (<span id="moonSpeedValue">0.400</span>)</label
+          >
+          <input
+            type="range"
+            id="moonSpeed"
+            min="1"
+            max="10"
+            step="1"
+            value="5"
+          />
+          <!-- Initial slider value (5) corresponds to default speed 0.4 -->
+
+          <hr class="my-4 border-gray-300" />
+
+          <!-- Main Orbit Line -->
+          <label for="mainOrbitColor" class="control-label"
+            >Main Orbit Color</label
+          >
+          <input type="color" id="mainOrbitColor" value="#d1e7de" />
+          <!-- Note: Color updated to match energy.js default -->
+
+          <div>
+            <label for="mainOrbitThickness"
+              >Orbit Line Thickness (<span id="mainOrbitThicknessValue">6</span
+              >)</label
+            >
+            <!-- Note: Value/Display updated to match energy.js default -->
+            <input
+              type="range"
+              id="mainOrbitThickness"
+              min="1"
+              max="6"
+              step="1"
+              value="6"
+            />
+          </div>
+
+          <hr class="my-4 border-gray-300" />
+
+          <!-- Delivery Day Settings -->
+          <h3 class="text-md font-medium mb-2 text-gray-600">
+            Delivery Day Settings
+          </h3>
+          <label class="control-label">Active Delivery Days:</label>
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <div>
+              <input
+                type="checkbox"
+                id="dayMonday"
+                name="deliveryDay"
+                value="monday"
+              />
+              <!-- Default checked state removed, will be set by JS -->
+              <label for="dayMonday">Mon</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                id="dayTuesday"
+                name="deliveryDay"
+                value="tuesday"
+              />
+              <!-- Default checked state removed, will be set by JS -->
+              <label for="dayTuesday">Tue</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                id="dayWednesday"
+                name="deliveryDay"
+                value="wednesday"
+              />
+              <!-- Default checked state removed, will be set by JS -->
+              <label for="dayWednesday">Wed</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                id="dayThursday"
+                name="deliveryDay"
+                value="thursday"
+              />
+              <!-- Default checked state removed, will be set by JS -->
+              <label for="dayThursday">Thu</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                id="dayFriday"
+                name="deliveryDay"
+                value="friday"
+              />
+              <!-- Default checked state removed, will be set by JS -->
+              <label for="dayFriday">Fri</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                id="daySaturday"
+                name="deliveryDay"
+                value="saturday"
+              />
+              <!-- Default checked state removed, will be set by JS -->
+              <label for="daySaturday">Sat</label>
+            </div>
+          </div>
+
+          <label for="planetActiveColor" class="control-label"
+            >Planet Active Color</label
+          >
+          <input type="color" id="planetActiveColor" value="#eeff00" />
+          <!-- Note: Color updated to match energy.js default -->
+
+          <label for="dayMarkColor" class="control-label">Day Mark Color</label>
+          <input type="color" id="dayMarkColor" value="#d1e7de" />
+          <!-- Note: Color updated to match energy.js default -->
+
+          <hr class="my-4 border-gray-300" />
+
+          <!-- Radar Signal -->
+          <div class="mb-3">
+            <label class="control-label">Radar Visibility:</label>
+            <div class="radio-group">
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="radarAlways"
+                  name="radarVisibilityMode"
+                  value="always"
+                />
+                <!-- Default checked state removed, will be set by JS -->
+                <label for="radarAlways">Always Visible</label>
+              </div>
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="radarActiveDays"
+                  name="radarVisibilityMode"
+                  value="activeDays"
+                />
+                <!-- Default checked state removed, will be set by JS -->
+                <label for="radarActiveDays">Visible on Active Days</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- NEW: Radar Flow Direction -->
+          <div class="mb-3">
+            <label class="control-label">Radar Flow Direction:</label>
+            <div class="radio-group">
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="radarFlowInward"
+                  name="radarFlowDirection"
+                  value="inward"
+                />
+                <!-- Default checked state removed, will be set by JS -->
+                <label for="radarFlowInward">Inward</label>
+              </div>
+              <div class="radio-option">
+                <input
+                  type="radio"
+                  id="radarFlowOutward"
+                  name="radarFlowDirection"
+                  value="outward"
+                />
+                <label for="radarFlowOutward">Outward</label>
+              </div>
+            </div>
+          </div>
+          <!-- End Radar Flow Direction -->
+
+          <label for="radarColor" class="control-label"
+            >Radar Signal Color</label
+          >
+          <input type="color" id="radarColor" value="#a0a0a0" />
+          <!-- Note: Color updated to match energy.js default -->
+
+          <label for="radarThickness" class="control-label"
+            >Radar Signal Thickness (<span id="radarThicknessValue">1</span
+            >)</label
+          >
+          <input
+            type="range"
+            id="radarThickness"
+            min="1"
+            max="5"
+            step="1"
+            value="1"
+          />
+
+          <!-- NEW: Radar Animation Speed -->
+          <label for="radarAnimationSpeed" class="control-label"
+            >Radar Animation Speed (<span id="radarAnimationSpeedValue">?</span
+            >)</label
+          >
+          <input
+            type="range"
+            id="radarAnimationSpeed"
+            min="0.05"
+            max="2.0"
+            step="0.05"
+            value="0.6"
+          />
+          <!-- End Radar Animation Speed -->
+
+          <!-- NEW: Radar Sets Per Day -->
+          <label for="radarSetsPerDay" class="control-label"
+            >Radar Sets Per Day (<span id="radarSetsPerDayValue">?</span
+            >)</label
+          >
+          <input
+            type="range"
+            id="radarSetsPerDay"
+            min="0"
+            max="10"
+            step="1"
+            value="1"
+          />
+          <!-- End Radar Sets Per Day -->
+        </div>
+        <!-- === End Orbit Controls Section === -->
 
         <hr class="my-4 border-gray-300" />
 

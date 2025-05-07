@@ -190,17 +190,17 @@ class DashboardController {
   }
 
   handleRadioClick(clickedLabel) {
-    // 1. Update visual state using the utility
+    // 1. Update visual state
     handleRadioGroupVisuals(clickedLabel)
 
-    // 2. Get data from the clicked input
+    // 2. Get data
     const radioInput = clickedLabel.querySelector('input[type="radio"]')
     if (!radioInput) return
     const groupName = radioInput.getAttribute('name')
     const selectedValue = radioInput.value
-    const dataset = clickedLabel.dataset // Includes data-button, data-set-mode etc.
+    const dataset = clickedLabel.dataset
 
-    // 3. Update the relevant summary element
+    // 3. Update summary element
     const summaryElement = this.summaries[groupName]
     if (summaryElement) {
       summaryElement.textContent = selectedValue
@@ -223,7 +223,7 @@ class DashboardController {
       }
     }
 
-    // 4. Dispatch specific events or call functions for side effects
+    // 4. Dispatch events or call functions
     const eventDetail = {
       group: groupName,
       value: selectedValue,
@@ -232,29 +232,32 @@ class DashboardController {
     }
 
     if (groupName === 'craft') {
-      // Option A: Custom Event (Decoupled)
       document.dispatchEvent(
         new CustomEvent('craftSettingsChanged', { detail: eventDetail })
       )
       console.log('Dispatched craftSettingsChanged:', eventDetail)
-
-      // Option B: Direct Call (If coupling is acceptable)
-      // if (window.aywCraftUIManager) { // Assuming CraftUIManager instance is globally accessible
-      //     window.aywCraftUIManager.updateCraftState(eventDetail);
-      // }
     } else if (groupName === 'energy') {
       const modeId = dataset.setMode?.toUpperCase()
       if (modeId && window.savedModes && window.savedModes[modeId]) {
-        // Call the existing global function from energy.js
-        window.updateEnergySimulation(window.savedModes[modeId])
-        console.log(`Called updateEnergySimulation for Mode ${modeId}`)
+        const modeSettings = window.savedModes[modeId]
+
+        // Call the main update function in energy.js
+        // It will handle updating both Energy and Orbit internally.
+        if (typeof window.updateEnergySimulation === 'function') {
+          window.updateEnergySimulation(modeSettings)
+          console.log(
+            `Dashboard: Called central updateEnergySimulation for Mode ${modeId}`
+          )
+        } else {
+          console.error(
+            'Dashboard: window.updateEnergySimulation is not defined!'
+          )
+        }
       } else {
         console.warn(
-          `Mode ${modeId} not found or savedModes not available for energy group.`
+          `Mode ${modeId} not found or window.savedModes not available for energy group.`
         )
       }
-      // Optional: Dispatch an event too if other components need to know
-      // document.dispatchEvent(new CustomEvent('energySettingsChanged', { detail: eventDetail }));
     }
     // Add 'else if' for other radio groups
   }

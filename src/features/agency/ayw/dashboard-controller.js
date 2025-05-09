@@ -238,24 +238,21 @@ class DashboardController {
       console.log('Dispatched craftSettingsChanged:', eventDetail)
     } else if (groupName === 'energy') {
       const modeId = dataset.setMode?.toUpperCase()
-      if (modeId && window.savedModes && window.savedModes[modeId]) {
-        const modeSettings = window.savedModes[modeId]
-
-        // Call the main update function in energy.js
-        // It will handle updating both Energy and Orbit internally.
-        if (typeof window.updateEnergySimulation === 'function') {
-          window.updateEnergySimulation(modeSettings)
+      if (modeId) {
+        // Check if modeId is present
+        if (typeof window.setEnergyMode === 'function') {
+          window.setEnergyMode(modeId) // Call the corrected mode setting function
           console.log(
-            `Dashboard: Called central updateEnergySimulation for Mode ${modeId}`
+            `Dashboard: Called window.setEnergyMode for Mode ${modeId}`
           )
         } else {
           console.error(
-            'Dashboard: window.updateEnergySimulation is not defined!'
+            'Dashboard: window.setEnergyMode is not defined! Cannot set energy mode.'
           )
         }
       } else {
         console.warn(
-          `Mode ${modeId} not found or window.savedModes not available for energy group.`
+          `Dashboard: No data-set-mode attribute found on clicked energy radio label.`
         )
       }
     }

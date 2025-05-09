@@ -87,6 +87,85 @@ let setsFiredInActiveDayBurst = 0 // Counter for sets fired in the current 'acti
 let activeDayBurstInitiated = false // Has a burst been started for the current active day period?
 let allLinesPreviouslyCompleted = true // Helper to detect when a set *just* finished.
 
+// --- NEW: Function to reset planet position and related animation states ---
+function resetOrbitalState() {
+  if (!orbitScene) {
+    console.warn('[orbit.js resetOrbitalState] orbitScene not available.')
+    return
+  }
+
+  const planetPivot = orbitScene.getObjectByName('planetPivot')
+  if (planetPivot) {
+    planetPivot.rotation.z = 0 // Reset to 12 o'clock position
+    console.log(
+      '[orbit.js resetOrbitalState] Planet pivot rotation reset to 0.'
+    )
+  } else {
+    console.warn('[orbit.js resetOrbitalState] Planet pivot not found.')
+  }
+
+  // Reset day and radar animation counters
+  currentSimulatedDayIndex = -1
+  setsFiredForContinuousLoop = 0
+  setsFiredInActiveDayBurst = 0
+  activeDayBurstInitiated = false
+  allLinesPreviouslyCompleted = true
+  console.log(
+    '[orbit.js resetOrbitalState] Day/radar animation counters reset.'
+  )
+
+  // Reset radar lines to their initial states based on current defaultInternalOrbitParams
+  const radarGroup = orbitScene.getObjectByName('radarSignalGroup')
+  if (radarGroup && radarGroup.userData.lines && defaultInternalOrbitParams) {
+    const lines = radarGroup.userData.lines
+    const {
+      radarMinRadius: minScale,
+      mainOrbitRadius,
+      radarMaxRadiusFactor,
+      radarFlowDirection: flowDirection,
+      numRadarLines, // numRadarLines is an instanceParam, ensure it's in defaultInternalOrbitParams
+    } = defaultInternalOrbitParams
+
+    const maxScale = mainOrbitRadius * radarMaxRadiusFactor
+    const radiusRange = maxScale - minScale
+    const setSpreadFactor = 0.5 // Consistent with animation logic
+
+    lines.forEach((lineMesh, i) => {
+      let resetScale
+      if (flowDirection === 'inward') {
+        resetScale =
+          maxScale -
+          (i / Math.max(1, numRadarLines - 1)) * (radiusRange * setSpreadFactor)
+        resetScale = Math.max(minScale, resetScale)
+      } else {
+        // 'outward'
+        resetScale =
+          minScale +
+          (i / Math.max(1, numRadarLines - 1)) * (radiusRange * setSpreadFactor)
+        resetScale = Math.min(maxScale, resetScale)
+      }
+      if (numRadarLines === 1) {
+        resetScale = flowDirection === 'inward' ? maxScale : minScale
+      }
+
+      lineMesh.scale.set(resetScale, resetScale, 1)
+      lineMesh.userData.hasCompletedCycle = false
+      // Visibility will be handled by the animation loop based on radarVisibilityMode
+      // However, if radarVisibilityMode is 'always', ensure they are visible.
+      if (defaultInternalOrbitParams.radarVisibilityMode === 'always') {
+        lineMesh.visible = true
+      } else {
+        // For 'activeDays', visibility depends on lerpFactor, let animation loop handle.
+        // For safety, ensure they are not stuck visible if they shouldn't be.
+        // This might be complex, the animation loop should correctly set visibility.
+        // For now, let's assume the animation loop will correctly set visibility on the next frame.
+      }
+    })
+    console.log('[orbit.js resetOrbitalState] Radar lines reset.')
+  }
+}
+// --- END NEW FUNCTION ---
+
 // Helper to update value display spans (moved from HTML)
 function updateValueDisplay(spanId, value, precision = 3) {
   const display = document.getElementById(spanId)
@@ -905,6 +984,11 @@ function initializeOrbit(options = {}, initialParams = null, modeId = null) {
     window.addEventListener('resize', onWindowResize, false)
   }
 
+  // --- Call resetOrbitalState at the end of initialization ---
+  // This ensures a consistent start, applying to the initial instanceParams.
+  resetOrbitalState()
+  // --- End NEW Call ---
+
   // Return value might be useful for integrator, but not strictly necessary
   // return { scene: orbitScene, camera: orbitCamera };
 }
@@ -932,6 +1016,7 @@ export function loadOrbitMode(modeId) {
 
   const orbitParams = extractOrbitParamsFromMode(savedModes[modeId])
   updateOrbitParameters(orbitParams)
+  resetOrbitalState() // --- NEW: Reset state when a mode is loaded ---
   return true
 }
 

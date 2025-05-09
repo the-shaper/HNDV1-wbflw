@@ -17,8 +17,8 @@ import {
 } from './orbit.js'
 import {
   updateCommsDotDuration,
-  startWorkingHoursAnimation as startCommsAnimation,
-} from './comms.js' // MODIFIED IMPORT
+  // setAsyncEffectEnabled, // REMOVE THIS LINE or comment it out
+} from './comms.js'
 
 let scene, camera, renderer
 let particles = []
@@ -999,65 +999,36 @@ function setCurrentSettingsAsMode(modeId) {
 function loadModeToPreview(modeId) {
   if (!modeId || !savedModes[modeId]) {
     console.error(`Mode "${modeId}" not found in savedModes memory.`)
-    return // Removed alert as console error is sufficient
+    return
   }
   console.log(`Loading Mode ${modeId} to preview and controls...`)
 
   // Ensure the mode data is fully populated with the extended defaults
   const modeSettings = { ...defaultParams, ...savedModes[modeId] }
 
-  // Call API first to update the *energy* simulation state and orbit visibility flag
-  window.updateEnergySimulation(modeSettings) // Pass the full settings
+  // 1. Update energy simulation state (and energy.js activeParams)
+  // This will update activeParams in energy.js with all keys from modeSettings.
+  // The orbit parameters sent by this call to orbit.js might be sparse,
+  // but we will override them with a full update next.
+  window.updateEnergySimulation(modeSettings)
 
-  // We need to force a direct update to orbit parameters
-  console.log('Forcing explicit orbit parameter update from loaded mode...')
-  const orbitSpecificParams = extractOrbitParams(modeSettings)
-  if (Object.keys(orbitSpecificParams).length > 0) {
-    // Add an immediate timeout to ensure this runs after the energy update
-    setTimeout(() => {
-      console.log(
-        'Applying orbit parameters with forced update:',
-        orbitSpecificParams
-      )
-      updateOrbitModuleParameters(orbitSpecificParams)
-    }, 10)
-  }
-
-  // --- NEW: Call Orbit API to update the orbit simulation state ---
-  // Extract only the orbit-specific parameters to pass to its update function
-  const orbitParamsToUpdate = {}
-  Object.keys(defaultParams).forEach((key) => {
-    // Exclude energy-specific keys and the visibility toggle itself
-    if (
-      ![
-        'simulationType',
-        'particleAmount',
-        'particleSize',
-        'particleSpeed',
-        'particleColorHex',
-        'backgroundColorHex',
-        'boundaryRadius',
-        'canvasSize',
-        'canvasScale',
-        'particleForce',
-        'metaballThreshold',
-        'orbitVisible',
-      ].includes(key)
-    ) {
-      // Check if the key exists in modeSettings (it should, due to ensureModeDefaults)
-      if (modeSettings.hasOwnProperty(key)) {
-        orbitParamsToUpdate[key] = modeSettings[key]
-      }
-    }
-  })
-  if (Object.keys(orbitParamsToUpdate).length > 0) {
-    updateOrbitModuleParameters(orbitParamsToUpdate) // Use the imported function
+  // 2. Directly and authoritatively update orbit module parameters with ALL settings from the mode.
+  // This ensures orbit.js receives the complete set of parameters for the loaded mode.
+  const orbitParamsFromMode = extractOrbitParams(modeSettings) // extractOrbitParams should get all non-energy keys
+  if (Object.keys(orbitParamsFromMode).length > 0) {
     console.log(
-      'Orbit parameters updated from loaded mode:',
-      orbitParamsToUpdate
+      `[energy.js loadModeToPreview] Sending full orbit parameters to orbit module:`,
+      JSON.parse(JSON.stringify(orbitParamsFromMode)) // Log a clean copy
     )
+    // Ensure updateOrbitModuleParameters (imported from orbit.js) is called correctly
+    if (typeof updateOrbitModuleParameters === 'function') {
+      updateOrbitModuleParameters(orbitParamsFromMode)
+    } else {
+      console.error(
+        '[energy.js loadModeToPreview] updateOrbitModuleParameters is not a function!'
+      )
+    }
   }
-  // --- End Orbit API Call ---
 
   // --- Update UI controls AFTER API calls ---
   const orbitLayerToggle = document.getElementById('orbitLayerToggle') // Get toggle ref
@@ -1210,9 +1181,18 @@ function loadModeToPreview(modeId) {
   console.log(`Mode ${modeId} loaded into controls and simulations.`)
 
   // Force orbit visibility if the mode has it enabled
+  // This is handled by the general update mechanism now,
+  // but as a safeguard ensure isOrbitLayerVisible is also set if needed.
   if (modeSettings.orbitVisible) {
-    isOrbitLayerVisible = true
-    console.log(`Forcing orbit layer visibility to true for mode ${modeId}`)
+    isOrbitLayerVisible = true // Ensure energy.js internal flag is also set
+    console.log(
+      `[energy.js loadModeToPreview] Orbit layer visibility for mode ${modeId} is true.`
+    )
+  } else {
+    isOrbitLayerVisible = false
+    console.log(
+      `[energy.js loadModeToPreview] Orbit layer visibility for mode ${modeId} is false.`
+    )
   }
 }
 
@@ -2449,10 +2429,9 @@ function initializeSimulations() {
         '[energy.js] Initializing comms timing after testbed simulation setup.'
       )
       updateCommsTimingBasedOnOrbit()
-      // Start comms animation if it's not auto-started by updateCommsDotDuration
-      if (typeof startCommsAnimation === 'function') {
-        // startCommsAnimation(); // updateCommsDotDuration should now handle starting
-      }
+      // The following block calling startCommsAnimation is removed
+      // as updateCommsDotDuration (called by updateCommsTimingBasedOnOrbit)
+      // will handle starting the animation.
     })
   }
 
@@ -2490,9 +2469,7 @@ function initializeSimulations() {
           '[energy.js] Initializing comms timing after Webflow simulations setup.'
         )
         updateCommsTimingBasedOnOrbit()
-        // if (typeof startCommsAnimation === 'function') {
-        //    startCommsAnimation();
-        // }
+        // Removed block calling startCommsAnimation
       })
     }
   } else if (!testContainer) {
@@ -2501,9 +2478,7 @@ function initializeSimulations() {
       '[energy.js] No simulation containers found. Setting default comms timing.'
     )
     updateCommsTimingBasedOnOrbit() // Will use default activeParams.orbitSpeed
-    // if (typeof startCommsAnimation === 'function') {
-    //   startCommsAnimation();
-    // }
+    // Removed block calling startCommsAnimation
   }
 }
 

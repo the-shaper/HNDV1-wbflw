@@ -695,10 +695,10 @@ function initializeOrbit(options = {}, initialParams = null, modeId = null) {
       instanceParams.canvasSize
     ),
     sizeAttenuation: 0,
-    transparent: true,
+    transparent: false,
     opacity: 1.0,
     depthTest: true,
-    depthWrite: false,
+    depthWrite: true,
   })
 
   // Log values used for Day Mark Material (inside the loop)
@@ -721,8 +721,8 @@ function initializeOrbit(options = {}, initialParams = null, modeId = null) {
 
   // Geometry definitions (reusable)
   const circleGeometry = (radius) => new THREE.CircleGeometry(radius, 32)
-  const dayMarkWidth = 0.02
-  const dayMarkHeight = 0.16
+  const dayMarkWidth = 0.03
+  const dayMarkHeight = 0.22
   const dayMarkGeometry = new THREE.PlaneGeometry(dayMarkWidth, dayMarkHeight)
 
   // Radar Base Geometry
@@ -772,7 +772,7 @@ function initializeOrbit(options = {}, initialParams = null, modeId = null) {
   for (let i = 0; i < numDayMarks; i++) {
     const angle = (i / numDayMarks) * Math.PI * 2 + dayMarkRotationOffset
     const positionRadius =
-      instanceParams.mainOrbitRadius + dayMarkHeight / 2 + 0.02
+      instanceParams.mainOrbitRadius + dayMarkHeight / 2 - 0.08
     // Create material inside the loop to use the updated dayMarkColor
     const dayMarkMaterial = new THREE.MeshBasicMaterial({
       color: instanceParams.dayMarkColor, // Use instanceParams
@@ -1393,8 +1393,9 @@ function updateOrbitAnimation(deltaTime) {
       const radarIsVisuallyActive = isDayActive && lerpFactor > 0.1
 
       radarGroup.visible = lerpFactor > 0.001
-      if (radarLineMaterialRef)
-        radarLineMaterialRef.uniforms.opacity.value = lerpFactor
+      if (radarLineMaterialRef) {
+        // radarLineMaterialRef.uniforms.opacity.value = lerpFactor; // This line no longer has a visual effect on opaque materials
+      }
 
       if (radarIsVisuallyActive) {
         if (!activeDayBurstInitiated) {

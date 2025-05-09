@@ -8,12 +8,17 @@ import {
   updateOrbitAnimation,
   renderOrbitScene,
   updateOrbitParameters as updateOrbitModuleParameters,
-  // --- NEW: Import speed calculation helpers ---
   calculateActualPlanetSpeed,
   calculatePlanetSliderValue,
   calculateActualMoonSpeed,
   calculateMoonSliderValue,
+  // REMOVE THIS if getDaySegmentDurationMilliseconds is truly in orbit.js and imported
+  // getDaySegmentDurationMilliseconds // Assuming this would be imported if it lived in orbit.js
 } from './orbit.js'
+import {
+  updateCommsDotDuration,
+  startWorkingHoursAnimation as startCommsAnimation,
+} from './comms.js' // MODIFIED IMPORT
 
 let scene, camera, renderer
 let particles = []
@@ -28,6 +33,40 @@ let isOrbitLayerVisible = false // Default to hidden
 
 // --- Maximum Particles Constant ---
 const MAX_PARTICLES = 333 // Define the pre-allocated maximum
+
+// --- NEW: Define Day Segment Calculation (Revised for clarity) ---
+const FULL_CIRCLE_RADIANS = 2 * Math.PI
+const VISUAL_DAYS_IN_ORBIT = 6 // Matches the 6 day markers on the orbit visualization
+const PLANET_EFFECTIVE_SPEED_MULTIPLIER = 2.5 // Empirically determined factor: planet visually moves ~2.5x faster
+// than orbitSpeed parameter would suggest for a simple 2*PI cycle.
+
+/**
+ * Calculates the duration in milliseconds for the comms dot to match
+ * the planet's traversal of one visual day segment, accounting for effective planet speed.
+ * @param {number} orbitSpeedValue - The angular speed parameter for the planet.
+ * @returns {number} Duration in milliseconds, or Infinity if orbitSpeedValue is 0.
+ */
+function getDaySegmentDurationMilliseconds(orbitSpeedValue) {
+  if (typeof orbitSpeedValue !== 'number' || orbitSpeedValue === 0) {
+    return Infinity // Avoid division by zero, effectively pausing
+  }
+  // Ensure orbitSpeed is positive if it represents magnitude of speed
+  const speed = Math.abs(orbitSpeedValue)
+
+  // Nominal time for a full orbit if 'speed' were a direct rad/s for a 2*PI cycle
+  const nominalTimeForFullCircleSeconds = FULL_CIRCLE_RADIANS / speed
+
+  // Actual visual time for a full orbit, is shorter due to effective speed multiplier
+  const actualVisualTimeForFullCircleSeconds =
+    nominalTimeForFullCircleSeconds / PLANET_EFFECTIVE_SPEED_MULTIPLIER
+
+  // Time for the planet to traverse one of the visual day segments
+  const timePerVisualDaySegmentSeconds =
+    actualVisualTimeForFullCircleSeconds / VISUAL_DAYS_IN_ORBIT
+
+  return timePerVisualDaySegmentSeconds * 1000
+}
+// --- END NEW CALCULATION ---
 
 // Default simulation parameters (Add new liquid params)
 let defaultParams = {
@@ -2070,7 +2109,6 @@ window.initializeEnergySimulation = function (config = {}) {
 
 // --- External API (Assign to window) ---
 window.updateEnergySimulation = function (newParams) {
-  // Guard clause
   if (!particles || !scene || !metaballMaterial) {
     console.warn(
       '[energy.js] API update called before simulation fully initialized.'
@@ -2086,13 +2124,12 @@ window.updateEnergySimulation = function (newParams) {
   }
 
   console.log('[energy.js] API Update with:', newParams)
-  let changeDetectedOverall = false // Track if any param actually changed
+  let changeDetectedOverall = false
   const previousType = activeParams.simulationType
   const previousAmount = activeParams.particleAmount
-  const previousParticleSize = activeParams.particleSize // Store previous size
+  const previousParticleSize = activeParams.particleSize
+  const previousOrbitSpeed = activeParams.orbitSpeed // Store previous speed
 
-  // --- Update activeParams safely (Energy specific + orbitVisible) ---
-  // Define keys relevant to this energy module
   const energyKeys = [
     'simulationType',
     'particleAmount',
@@ -2106,15 +2143,12 @@ window.updateEnergySimulation = function (newParams) {
     'particleForce',
     'metaballThreshold',
     'orbitVisible',
-  ] // <<< Added closing bracket ']'
+  ]
 
   for (const key in newParams) {
-    // --- FIXED Condition: Check if the key is relevant to energy/visibility ---
     if (energyKeys.includes(key)) {
       const incomingValue = newParams[key]
       let processedValue = incomingValue
-
-      // Handle orbit visibility toggle separately
       if (key === 'orbitVisible') {
         const boolValue =
           typeof incomingValue === 'string'
@@ -2127,17 +2161,12 @@ window.updateEnergySimulation = function (newParams) {
           )
           changeDetectedOverall = true
         }
-        // Store the boolean value in activeParams too for consistency
-        activeParams[key] = isOrbitLayerVisible // Store the final boolean state
-        continue // Move to next key after handling visibility
+        activeParams[key] = isOrbitLayerVisible
+        continue
       }
-
-      // --- Coerce type for other energy simulation params ---
-      // Check the type of the *default* parameter for guidance if activeParam doesn't exist yet
       const targetType = typeof (activeParams[key] !== undefined
         ? activeParams[key]
         : defaultParams[key])
-
       if (targetType === 'number') {
         processedValue = parseFloat(incomingValue)
         if (isNaN(processedValue)) {
@@ -2146,13 +2175,11 @@ window.updateEnergySimulation = function (newParams) {
             incomingValue,
             `Expected number. Skipping.`
           )
-          continue // Skip update for this key
+          continue
         }
       } else if (targetType === 'string') {
         processedValue = String(incomingValue)
-      } // Add boolean handling here if needed for non-visibility energy booleans
-
-      // Update if value is actually different OR if the key didn't exist before
+      }
       if (
         activeParams[key] === undefined ||
         processedValue !== activeParams[key]
@@ -2163,10 +2190,46 @@ window.updateEnergySimulation = function (newParams) {
           `[energy.js] API: Updated activeParams.${key} to ${processedValue}`
         )
       }
-    } // End if (energyKeys.includes(key))
-  } // End for...in loop
+    }
+  }
 
-  // Re-clamp amount AFTER potential update
+  // Update activeParams with non-energy keys if present in newParams
+  // This ensures orbitSpeed, etc., get updated in activeParams if passed directly
+  for (const key in newParams) {
+    if (
+      defaultParams.hasOwnProperty(key) &&
+      !energyKeys.includes(key) &&
+      newParams.hasOwnProperty(key)
+    ) {
+      // Check if the value is actually different before updating
+      if (activeParams[key] !== newParams[key]) {
+        if (key === 'orbitSpeed') {
+          const parsedSpeed = parseFloat(newParams[key])
+          if (!isNaN(parsedSpeed)) {
+            if (activeParams[key] !== parsedSpeed) {
+              activeParams[key] = parsedSpeed
+              changeDetectedOverall = true
+              console.log(
+                `[energy.js] API: Updated activeParams.orbitSpeed to ${activeParams[key]}`
+              )
+            }
+          } else {
+            console.warn(
+              `[energy.js] API: Invalid number for orbitSpeed: ${newParams[key]}. Skipping.`
+            )
+          }
+        } else {
+          // For other non-energy keys, just assign
+          activeParams[key] = newParams[key]
+          changeDetectedOverall = true
+          console.log(
+            `[energy.js] API: Updated activeParams.${key} to ${activeParams[key]}`
+          )
+        }
+      }
+    }
+  }
+
   activeParams.particleAmount = Math.max(
     1,
     Math.min(
@@ -2175,18 +2238,14 @@ window.updateEnergySimulation = function (newParams) {
     )
   )
   const currentAmount = activeParams.particleAmount
-
-  // --- Handle consequences of changes (Energy specific) ---
   const sizeChanged = activeParams.particleSize !== previousParticleSize
   let needsParticleRecreation = currentAmount !== previousAmount
-  // --- Declare uniformsUpdated flag earlier ---
-  let uniformsUpdated = false // Initialize flag
+  let uniformsUpdated = false
 
   if (sizeChanged && !needsParticleRecreation) {
     console.log(
       '[energy.js] API: Particle size changed, updating sizes uniform only.'
     )
-    // Only update sizes, not positions/velocities
     particles.forEach((p, index) => {
       if (p && index < currentAmount) {
         p.size = activeParams.particleSize
@@ -2195,20 +2254,18 @@ window.updateEnergySimulation = function (newParams) {
         particleSizesUniform[index] = 0
       }
     })
-    metaballMaterial.uniforms.particleSizes.needsUpdate = true
-    uniformsUpdated = true // Use the declared variable
+    if (metaballMaterial) {
+      metaballMaterial.uniforms.particleSizes.needsUpdate = true
+    }
+    uniformsUpdated = true
   } else if (needsParticleRecreation) {
     console.log(
       '[energy.js] API: Recreating particles for amount change to:',
       currentAmount
     )
-    // This function also updates size and position uniforms
     particles = createParticles(activeParams)
-    // No need to set uniformsUpdated = true here, as 'needsParticleRecreation'
-    // is checked later, and createParticles handles internal flags.
   }
 
-  // --- Type Change effects ---
   if (activeParams.simulationType !== previousType) {
     console.log(
       '[energy.js] API: Type changed from',
@@ -2218,69 +2275,61 @@ window.updateEnergySimulation = function (newParams) {
     )
   }
 
-  // --- Update Uniforms Directly Based on activeParams (Energy specific) ---
-  // 'uniformsUpdated' flag declared above
+  if (metaballMaterial) {
+    if (
+      scene.background.getHexString() !==
+      activeParams.backgroundColorHex?.substring(1)
+    ) {
+      scene.background.set(activeParams.backgroundColorHex)
+      metaballMaterial.uniforms.backgroundColor.value.set(
+        activeParams.backgroundColorHex
+      )
+      uniformsUpdated = true
+    }
+    if (
+      metaballMaterial.uniforms.particleColor.value.getHexString() !==
+      activeParams.particleColorHex?.substring(1)
+    ) {
+      metaballMaterial.uniforms.particleColor.value.set(
+        activeParams.particleColorHex
+      )
+      uniformsUpdated = true
+    }
+    if (metaballMaterial.uniforms.particleCount.value !== currentAmount) {
+      metaballMaterial.uniforms.particleCount.value = currentAmount
+      uniformsUpdated = true
+    }
+    if (
+      metaballMaterial.uniforms.boundaryRadius.value !==
+      activeParams.boundaryRadius
+    ) {
+      metaballMaterial.uniforms.boundaryRadius.value =
+        activeParams.boundaryRadius
+      uniformsUpdated = true
+    }
+    if (
+      metaballMaterial.uniforms.threshold.value !==
+      activeParams.metaballThreshold
+    ) {
+      metaballMaterial.uniforms.threshold.value = activeParams.metaballThreshold
+      uniformsUpdated = true
+    }
+    if (
+      metaballMaterial.uniforms.canvasScale.value !== activeParams.canvasScale
+    ) {
+      metaballMaterial.uniforms.canvasScale.value = activeParams.canvasScale
+      uniformsUpdated = true
+    }
 
-  // Background Color
-  if (
-    scene.background.getHexString() !==
-    activeParams.backgroundColorHex?.substring(1)
-  ) {
-    scene.background.set(activeParams.backgroundColorHex)
-    metaballMaterial.uniforms.backgroundColor.value.set(
-      activeParams.backgroundColorHex
-    )
-    uniformsUpdated = true // Use the declared variable
-  }
-  // Particle Color
-  if (
-    metaballMaterial.uniforms.particleColor.value.getHexString() !==
-    activeParams.particleColorHex?.substring(1)
-  ) {
-    metaballMaterial.uniforms.particleColor.value.set(
-      activeParams.particleColorHex
-    )
-    uniformsUpdated = true // Use the declared variable
-  }
-  // Particle Count
-  if (metaballMaterial.uniforms.particleCount.value !== currentAmount) {
-    metaballMaterial.uniforms.particleCount.value = currentAmount
-    uniformsUpdated = true // Use the declared variable
-  }
-  // Boundary Radius
-  if (
-    metaballMaterial.uniforms.boundaryRadius.value !==
-    activeParams.boundaryRadius
-  ) {
-    metaballMaterial.uniforms.boundaryRadius.value = activeParams.boundaryRadius
-    uniformsUpdated = true // Use the declared variable
-  }
-  // Threshold
-  if (
-    metaballMaterial.uniforms.threshold.value !== activeParams.metaballThreshold
-  ) {
-    metaballMaterial.uniforms.threshold.value = activeParams.metaballThreshold
-    uniformsUpdated = true // Use the declared variable
-  }
-  // Canvas Scale
-  if (
-    metaballMaterial.uniforms.canvasScale.value !== activeParams.canvasScale
-  ) {
-    metaballMaterial.uniforms.canvasScale.value = activeParams.canvasScale
-    uniformsUpdated = true // Use the declared variable
-  }
-
-  // Flag uniforms for update if needed
-  // Use the consistent variable name 'uniformsUpdated'
-  if (uniformsUpdated || needsParticleRecreation || sizeChanged) {
-    // Position uniform is updated in physics loop, but ensure flags are set here
-    // if other uniforms changed or particles were recreated/resized.
-    metaballMaterial.uniforms.particlePositions.needsUpdate = true
-    metaballMaterial.uniforms.particleSizes.needsUpdate = true
-    console.log('[energy.js] API: Flagging position/size uniforms for update.')
+    if (uniformsUpdated || needsParticleRecreation || sizeChanged) {
+      metaballMaterial.uniforms.particlePositions.needsUpdate = true
+      metaballMaterial.uniforms.particleSizes.needsUpdate = true
+      console.log(
+        '[energy.js] API: Flagging position/size uniforms for update.'
+      )
+    }
   }
 
-  // --- >>> NEW: Coordinate Orbit Update <<< ---
   console.log('[energy.js] API: Preparing to update Orbit module.')
   const orbitParamsToUpdate = {}
   const knownOrbitKeys = [
@@ -2313,13 +2362,23 @@ window.updateEnergySimulation = function (newParams) {
     'radarMinRadius',
     'radarAnimationSpeed',
     'dayMarkColor',
-    'radarFlowDirection', // Add new parameter here
-    'radarSetsPerDay', // Add new parameter here
+    'radarFlowDirection',
+    'radarSetsPerDay',
   ]
 
   for (const key in newParams) {
-    if (knownOrbitKeys.includes(key)) {
-      orbitParamsToUpdate[key] = newParams[key]
+    if (knownOrbitKeys.includes(key) && newParams.hasOwnProperty(key)) {
+      // Only add to orbitParamsToUpdate if the value in newParams is different
+      // from what's currently in activeParams, OR if it's a direct command like 'enabled'.
+      // For orbitSpeed, we want to ensure it gets passed if it's in newParams.
+      if (key === 'orbitSpeed') {
+        const parsedSpeed = parseFloat(newParams[key])
+        if (!isNaN(parsedSpeed)) {
+          orbitParamsToUpdate[key] = parsedSpeed
+        }
+      } else if (activeParams[key] !== newParams[key] || key === 'enabled') {
+        orbitParamsToUpdate[key] = newParams[key]
+      }
     }
   }
 
@@ -2337,15 +2396,33 @@ window.updateEnergySimulation = function (newParams) {
     }
   } else {
     console.log(
-      '[energy.js] API: No orbit-specific parameters found in update call.'
+      '[energy.js] API: No new orbit-specific parameters found in update call to send to orbit module.'
     )
   }
 
-  // --- Final Logging ---
+  // Update Comms Timing if orbitSpeed has effectively changed in activeParams
+  if (activeParams.orbitSpeed !== previousOrbitSpeed) {
+    console.log(
+      `[energy.js] Orbit speed in activeParams changed. Old: ${previousOrbitSpeed}, New: ${activeParams.orbitSpeed}. Triggering comms update.`
+    )
+    updateCommsTimingBasedOnOrbit()
+  } else if (
+    newParams.hasOwnProperty('orbitSpeed') &&
+    parseFloat(newParams.orbitSpeed) === activeParams.orbitSpeed &&
+    activeParams.orbitSpeed === previousOrbitSpeed
+  ) {
+    // This case handles if orbitSpeed was in newParams but didn't change the value in activeParams
+    // (e.g. setting it to the same value it already had). We still might want to update comms if it's an explicit call.
+    console.log(
+      `[energy.js] Orbit speed explicitly provided in newParams but value in activeParams remains ${activeParams.orbitSpeed}. Triggering comms update.`
+    )
+    updateCommsTimingBasedOnOrbit()
+  }
+
   if (changeDetectedOverall) {
     console.log(
       '[energy.js] API: Applied updates. Current activeParams:',
-      JSON.parse(JSON.stringify(activeParams))
+      JSON.parse(JSON.stringify(activeParams)) // Log a copy
     )
   } else {
     console.log(
@@ -2356,28 +2433,35 @@ window.updateEnergySimulation = function (newParams) {
 
 // --- Modify Initialization Logic ---
 function initializeSimulations() {
-  // 1. Load modes synchronously first
   loadModes()
   window.savedModes = savedModes
 
-  // 2. Attempt initialization for the testbed (energy.html)
   const testContainer = document.getElementById('container')
   const testCanvas = document.getElementById('simulationCanvas')
   if (testContainer && testCanvas) {
     console.log('Attempting initialization for HTML testbed (#container)')
-    // init now handles initializing orbit internally
     init({
       containerSelector: '#container',
       createCanvas: false,
+    }).then(() => {
+      // After the main #container init, which likely sets activeParams
+      console.log(
+        '[energy.js] Initializing comms timing after testbed simulation setup.'
+      )
+      updateCommsTimingBasedOnOrbit()
+      // Start comms animation if it's not auto-started by updateCommsDotDuration
+      if (typeof startCommsAnimation === 'function') {
+        // startCommsAnimation(); // updateCommsDotDuration should now handle starting
+      }
     })
   }
 
-  // 3. Attempt initialization for Webflow container(s)
   const webflowContainers = document.querySelectorAll('.energy-container')
   if (webflowContainers.length > 0) {
     console.log(
       `Found ${webflowContainers.length} Webflow container(s) (.energy-container). Attempting initialization...`
     )
+    const initPromises = []
     webflowContainers.forEach((container, index) => {
       let stableSelector = container.id ? `#${container.id}` : null
       if (!stableSelector) {
@@ -2386,19 +2470,40 @@ function initializeSimulations() {
           `Webflow container lacks ID. Using potentially unstable selector: ${stableSelector}. Add a unique ID for reliability.`
         )
       }
-
-      // ADDED: Force default mode A for Webflow containers that don't have mode attrs
       if (!container.dataset.setMode && !container.dataset.mode) {
-        console.log('Webflow container has no mode attribute, forcing Mode A')
+        console.log(
+          `Webflow container ${stableSelector} has no mode attribute, forcing Mode A`
+        )
         container.dataset.setMode = 'A'
       }
-
-      // init now handles initializing orbit internally
-      init({
-        containerSelector: stableSelector,
-        createCanvas: true, // Assume we need to create canvas for Webflow
-      })
+      initPromises.push(
+        init({
+          containerSelector: stableSelector,
+          createCanvas: true,
+        })
+      )
     })
+    // If no testbed, and webflow containers exist, the first one might set activeParams
+    if (!testContainer) {
+      Promise.all(initPromises).then(() => {
+        console.log(
+          '[energy.js] Initializing comms timing after Webflow simulations setup.'
+        )
+        updateCommsTimingBasedOnOrbit()
+        // if (typeof startCommsAnimation === 'function') {
+        //    startCommsAnimation();
+        // }
+      })
+    }
+  } else if (!testContainer) {
+    // If no simulations are found at all, still attempt to set a default comms timing
+    console.log(
+      '[energy.js] No simulation containers found. Setting default comms timing.'
+    )
+    updateCommsTimingBasedOnOrbit() // Will use default activeParams.orbitSpeed
+    // if (typeof startCommsAnimation === 'function') {
+    //   startCommsAnimation();
+    // }
   }
 }
 
@@ -2447,4 +2552,37 @@ window.setEnergyMode = function (modeId) {
   console.log(
     `Forcing orbit layer visibility to true for direct mode trigger ${modeId}`
   )
+}
+
+// Helper function to calculate and update comms duration
+function updateCommsTimingBasedOnOrbit() {
+  if (
+    typeof getDaySegmentDurationMilliseconds === 'function' &&
+    typeof updateCommsDotDuration === 'function'
+  ) {
+    const currentOrbitSpeed = activeParams.orbitSpeed // This should be the actual orbit speed value
+    if (typeof currentOrbitSpeed === 'number') {
+      const newDotDuration =
+        getDaySegmentDurationMilliseconds(currentOrbitSpeed)
+      if (isFinite(newDotDuration) && newDotDuration > 0) {
+        console.log(
+          `[energy.js] Calculated new dot duration for comms: ${newDotDuration}ms based on orbitSpeed: ${currentOrbitSpeed}`
+        )
+        updateCommsDotDuration(newDotDuration)
+      } else {
+        console.warn(
+          `[energy.js] Invalid newDotDuration calculated: ${newDotDuration} (orbitSpeed: ${currentOrbitSpeed}). Signaling comms to pause/stop.`
+        )
+        updateCommsDotDuration(null) // Signal comms to pause or use a very long duration
+      }
+    } else {
+      console.warn(
+        '[energy.js] activeParams.orbitSpeed is not a number, cannot update comms timing.'
+      )
+    }
+  } else {
+    console.warn(
+      '[energy.js] Missing getDaySegmentDurationMilliseconds or updateCommsDotDuration function.'
+    )
+  }
 }

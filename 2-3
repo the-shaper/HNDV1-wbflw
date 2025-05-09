@@ -1,0 +1,2 @@
+import anime from 'animejs/lib/anime.es.js' // Or your specific import path for Anime.js
+import { animate, stagger } from 'animejs' 

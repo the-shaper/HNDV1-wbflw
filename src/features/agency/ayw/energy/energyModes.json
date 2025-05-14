@@ -22,7 +22,7 @@
     "orbitSpeed": 0.4235801032000001,
     "moonOrbitSpeed": 1.0471696000000001,
     "mainOrbitColor": "#eaff36",
-    "mainOrbitThickness": 36,
+    "mainOrbitThickness": 44,
     "radarColor": "#91f8e7",
     "radarThickness": 3,
     "activeDeliveryDays": {
@@ -39,16 +39,16 @@
     "radarFlowDirection": "outward",
     "radarSetsPerDay": 1,
     "radarMaxRadiusFactor": 1,
-    "radarMinRadius": 0.3
+    "radarMinRadius": 0.33
   },
   "B": {
     "simulationType": "metaball",
     "particleAmount": 333,
-    "particleSize": 14,
+    "particleSize": 24,
     "particleSpeed": 0.09,
     "particleColorHex": "#0189d7",
     "backgroundColorHex": "#edf7ee",
-    "boundaryRadius": 0.37,
+    "boundaryRadius": 0.57,
     "canvasSize": 800,
     "canvasScale": 1,
     "particleForce": 2,
@@ -58,13 +58,13 @@
     "sunColor": "#eaff36",
     "planetColor": "#607d8b",
     "showMoon1": true,
-    "moon1Color": "#ff3d23",
+    "moon1Color": "#0189d7",
     "showMoon2": true,
-    "moon2Color": "#ff3d23",
+    "moon2Color": "#0189d7",
     "orbitSpeed": 0.4235801032000001,
     "moonOrbitSpeed": 1.0471696000000001,
     "mainOrbitColor": "#eaff36",
-    "mainOrbitThickness": 36,
+    "mainOrbitThickness": 44,
     "radarColor": "#91f8e7",
     "radarThickness": 3,
     "activeDeliveryDays": {
@@ -78,9 +78,9 @@
     "planetActiveColor": "#eeff00",
     "radarVisibilityMode": "activeDays",
     "dayMarkColor": "#c6d9d1",
-    "radarFlowDirection": "inward",
-    "radarSetsPerDay": 1,
+    "radarFlowDirection": "outward",
+    "radarSetsPerDay": 2,
     "radarMaxRadiusFactor": 1,
-    "radarMinRadius": 0.9
+    "radarMinRadius": 0.33
   }
 }

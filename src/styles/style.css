@@ -163,3 +163,39 @@ body.initial-load .slider-bg_component {
     /* display: block; */ /* JS now controls display */
   }
 }
+.ayw-energycomms-day.is-on {
+  /* Assuming you were changing background-color. Adjust if it's 'color' or 'border-color' etc. */
+  background-color: var(--comms-active-dot-color);
+
+  /* If you had a static color defined here before, like:
+     background-color: #SomeStaticColor;
+     You should remove or comment it out. */
+}
+
+/* Ensure .ayw-energycomms-day has a default background for its "off" state, e.g.: */
+.ayw-energycomms-day {
+  /* ... your other styles ... */
+  background-color: #c6d9d1; /* Example "off" color */
+  transition: background-color 0.3s ease; /* Optional: for smooth color transitions */
+}
+
+.ayw-accordion-pane-content.commitment {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 5%,
+    black 95%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 5%,
+    black 95%,
+    transparent 99%
+  );
+}
+
+.scroll-line-project.commitment {
+  height: 55svh;
+}

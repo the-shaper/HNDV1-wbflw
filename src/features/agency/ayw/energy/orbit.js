@@ -1581,4 +1581,5 @@ export {
   calculatePlanetSliderValue,
   calculateActualMoonSpeed,
   calculateMoonSliderValue,
+  resetOrbitalState,
 }

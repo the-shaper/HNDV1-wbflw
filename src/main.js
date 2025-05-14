@@ -134,50 +134,61 @@ document.addEventListener('DOMContentLoaded', () => {
       import('./features/agency/ayw/dashboard-controller'), // Contains initDashboardController (default export)
       import('./features/agency/ayw/energy/energy.js'), // For side effects
       import('./features/agency/ayw/energy/comms'), // Contains startWorkingHoursAnimation, stopWorkingHoursAnimation (named exports)
+      import('./features/agency/ayw/energy/phoneLine.js'), // Import for side effects (self-initializing IIFE)
     ])
-      .then(([aywModule, dashboardModule, energyModule, commsModule]) => {
-        // Initialize AYW modules if exports are functions
-        if (typeof aywModule.initAccordionAYW === 'function') {
-          aywModule.initAccordionAYW()
-        } else {
-          console.error(
-            'Error: initAccordionAYW not found or not a function in ./features/agency/ayw.'
-          )
+      .then(
+        ([
+          aywModule,
+          dashboardModule,
+          energyModule,
+          commsModule,
+          phoneLineModule, // phoneLineModule will be undefined or an empty object as it's an IIFE
+        ]) => {
+          // Initialize AYW modules if exports are functions
+          if (typeof aywModule.initAccordionAYW === 'function') {
+            aywModule.initAccordionAYW()
+          } else {
+            console.error(
+              'Error: initAccordionAYW not found or not a function in ./features/agency/ayw.'
+            )
+          }
+
+          if (typeof aywModule.initAYWCraftUI === 'function') {
+            aywModule.initAYWCraftUI()
+          } else {
+            console.error(
+              'Error: initAYWCraftUI not found or not a function in ./features/agency/ayw.'
+            )
+          }
+
+          // Initialize Dashboard Controller if default export is a function
+          if (typeof dashboardModule.default === 'function') {
+            dashboardModule.default() // initDashboardController
+          } else {
+            console.error(
+              'Error: initDashboardController not exported as default function or is not a function in ./features/agency/ayw/dashboard-controller.'
+            )
+          }
+
+          // Energy.js was imported for side effects, no explicit call needed here.
+          // phoneLine.js was imported for side effects, its IIFE has run.
+          console.log('phoneLine.js module loaded (self-initialized).')
+
+          // Start Working Hours Animation if named export is a function
+          if (typeof commsModule.startWorkingHoursAnimation === 'function') {
+            commsModule.startWorkingHoursAnimation()
+          } else {
+            console.error(
+              'Error: startWorkingHoursAnimation not found or not a function in ./features/agency/ayw/energy/comms.'
+            )
+          }
+
+          // stopWorkingHoursAnimation is now available via commsModule.stopWorkingHoursAnimation()
+          // but is not called by default in this block.
+
+          console.log('AYW and Energy modules initialized.')
         }
-
-        if (typeof aywModule.initAYWCraftUI === 'function') {
-          aywModule.initAYWCraftUI()
-        } else {
-          console.error(
-            'Error: initAYWCraftUI not found or not a function in ./features/agency/ayw.'
-          )
-        }
-
-        // Initialize Dashboard Controller if default export is a function
-        if (typeof dashboardModule.default === 'function') {
-          dashboardModule.default() // initDashboardController
-        } else {
-          console.error(
-            'Error: initDashboardController not exported as default function or is not a function in ./features/agency/ayw/dashboard-controller.'
-          )
-        }
-
-        // Energy.js was imported for side effects, no explicit call needed here.
-
-        // Start Working Hours Animation if named export is a function
-        if (typeof commsModule.startWorkingHoursAnimation === 'function') {
-          commsModule.startWorkingHoursAnimation()
-        } else {
-          console.error(
-            'Error: startWorkingHoursAnimation not found or not a function in ./features/agency/ayw/energy/comms.'
-          )
-        }
-
-        // stopWorkingHoursAnimation is now available via commsModule.stopWorkingHoursAnimation()
-        // but is not called by default in this block.
-
-        console.log('AYW and Energy modules initialized.')
-      })
+      )
       .catch((error) => {
         console.error('Failed to load one or more AYW related modules:', error)
       })

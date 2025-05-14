@@ -27,6 +27,16 @@ class DashboardController {
       2: document.getElementById('ayw-config-butts-2'),
       3: document.getElementById('ayw-config-butts-3'),
     }
+    // --- NEW: Cache Commitment Form Scroll Elements ---
+    this.commitmentForm = document.querySelector('.commitment-form') // Optional parent container
+    this.commitmentFieldsWrapper = this.commitmentForm?.querySelector(
+      '.commitment-fields-wrapper'
+    )
+    this.commitmentScrollbarTrack = this.commitmentForm?.querySelector(
+      '.scroll-line-project.commitment'
+    )
+    this.commitmentScrollDot =
+      this.commitmentScrollbarTrack?.querySelector('.scroll-dot')
 
     // --- Instance Storage ---
     // This assumes the Accordion is initialized elsewhere and we can find it if needed,
@@ -42,6 +52,8 @@ class DashboardController {
     this.handleNavClick = this.handleNavClick.bind(this)
     this.handleAccordionChange = this.handleAccordionChange.bind(this)
     this.updateNavigationArrows = this.updateNavigationArrows.bind(this)
+    // --- NEW: Bind Commitment Scroll Handler ---
+    this.handleCommitmentScroll = this.handleCommitmentScroll.bind(this)
 
     this.init()
   }
@@ -165,6 +177,9 @@ class DashboardController {
     // Set initial arrow state AFTER checking instance
     this.updateNavigationArrows()
     console.log('Dashboard Controller: Set initial navigation arrow state.')
+
+    // --- NEW: Initialize Commitment Scrollbar ---
+    this.setupCommitmentScrollbar()
   }
 
   // NEW: Sets the initial visible config button wrapper without animation
@@ -457,6 +472,74 @@ class DashboardController {
     )
   }
   // --- End NEW Method ---
+
+  // --- NEW: Method to Setup Commitment Scrollbar ---
+  setupCommitmentScrollbar() {
+    if (
+      !this.commitmentFieldsWrapper ||
+      !this.commitmentScrollbarTrack ||
+      !this.commitmentScrollDot
+    ) {
+      console.warn(
+        'Dashboard Controller: Commitment form scrollbar elements (.commitment-fields-wrapper, .scroll-line-project.commitment, or .scroll-dot) not found. Skipping setup.'
+      )
+      return
+    }
+
+    // Add the scroll listener
+    this.commitmentFieldsWrapper.addEventListener(
+      'scroll',
+      this.handleCommitmentScroll
+    )
+    console.log(
+      'Dashboard Controller: Added scroll listener to .commitment-fields-wrapper.'
+    )
+
+    // Initial update in case content is already scrolled or sized
+    this.handleCommitmentScroll()
+  }
+
+  // --- NEW: Scroll Handler for Commitment Form ---
+  handleCommitmentScroll() {
+    // Re-check elements just in case, though unlikely to change after init
+    if (
+      !this.commitmentFieldsWrapper ||
+      !this.commitmentScrollbarTrack ||
+      !this.commitmentScrollDot
+    ) {
+      return // Should not happen if setup succeeded, but good practice
+    }
+
+    const contentWrapper = this.commitmentFieldsWrapper
+    const scrollbarTrack = this.commitmentScrollbarTrack
+    const scrollDot = this.commitmentScrollDot
+
+    // Calculate the total scrollable height (total content height - visible height)
+    const contentScrollableHeight =
+      contentWrapper.scrollHeight - contentWrapper.clientHeight
+    // Get the height of the custom scrollbar track
+    const scrollbarTrackHeight = scrollbarTrack.clientHeight
+    // Get the current scroll position from the top
+    const scrollPosition = contentWrapper.scrollTop
+
+    // Calculate the ratio of how far the content has been scrolled (0 to 1)
+    // Avoid division by zero if content isn't scrollable
+    const scrollRatio =
+      contentScrollableHeight > 0 ? scrollPosition / contentScrollableHeight : 0
+
+    // Calculate the dot's desired top position based on the scroll ratio and track height
+    const dotPosition = scrollRatio * scrollbarTrackHeight
+
+    // Apply the offset from the original portfolio code (-6.5).
+    // This offset likely accounts for roughly half the height of the dot element
+    // to visually center it on the track. You might need to adjust this value
+    // based on the actual height and border-box sizing of your .scroll-dot element.
+    const finalDotPosition = dotPosition - 6.5
+
+    // Apply the calculated top position to the scroll dot element
+    scrollDot.style.top = `${finalDotPosition}px`
+  }
+  // --- End NEW Methods ---
 }
 
 // Function to initialize the controller

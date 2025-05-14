@@ -12,6 +12,7 @@ import {
   calculatePlanetSliderValue,
   calculateActualMoonSpeed,
   calculateMoonSliderValue,
+  resetOrbitalState, // Add this line
   // REMOVE THIS if getDaySegmentDurationMilliseconds is truly in orbit.js and imported
   // getDaySegmentDurationMilliseconds // Assuming this would be imported if it lived in orbit.js
 } from './orbit.js'
@@ -1023,6 +1024,18 @@ function loadModeToPreview(modeId) {
     // Ensure updateOrbitModuleParameters (imported from orbit.js) is called correctly
     if (typeof updateOrbitModuleParameters === 'function') {
       updateOrbitModuleParameters(orbitParamsFromMode)
+      // --- Call resetOrbitalState AFTER updating parameters ---
+      if (typeof resetOrbitalState === 'function') {
+        resetOrbitalState()
+        console.log(
+          `[energy.js loadModeToPreview] Called resetOrbitalState for mode ${modeId}.`
+        )
+      } else {
+        console.error(
+          '[energy.js loadModeToPreview] resetOrbitalState is not a function!'
+        )
+      }
+      // --- End call to resetOrbitalState ---
     } else {
       console.error(
         '[energy.js loadModeToPreview] updateOrbitModuleParameters is not a function!'

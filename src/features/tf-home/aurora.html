@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurora and Waveform Shader</title>
+    <link rel="stylesheet" href="aurora.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="info">
+      <div class="panel-header">
+        <h2 class="panel-title">Aurora & Waveform</h2>
+        <button class="collapse-button" id="toggleInfoPanel">&#9660;</button>
+      </div>
+      <div class="panel-content">
+        <div class="mode-controls">
+          <button id="setCurrentAsModeA">Set Current as Mode A</button>
+          <button id="setCurrentAsModeB">Set Current as Mode B</button>
+          <button id="selectModeA">Select Mode A</button>
+          <button id="selectModeB">Select Mode B</button>
+          <button id="saveAllModes">Save All Modes&nbsp;(A &amp; B)</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="container">
+      <canvas id="auroraCanvas"></canvas>
+    </div>
+
+    <!-- External website -->
+    <div class="twilight-background" data-set-mode="A"></div>
+
+    <!-- Vertex Shader (used by all effects) -->
+    <script type="x-shader/x-vertex" id="vertexShader">
+      varying vec2 vUv;
+      void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    </script>
+
+    <!-- Fragment Shader for Main Aurora -->
+    <script type="x-shader/x-fragment" id="fragmentShaderAurora">
+      uniform float uTime;
+      uniform float uFrequency;
+      uniform float uSolarWind;
+      uniform float uVisibility;
+      uniform float uPositionY;
+      uniform float uAuroraHeight;
+      uniform float uAuroraHeightVariation;
+      uniform float uAuroraCurveBias;
+      uniform float uAuroraSparsity;
+      uniform float uRayOscillation;
+      uniform float uEmanationSpeed;
+      uniform vec3 uColor1;
+      uniform vec3 uColor2;
+      uniform vec2 uResolution;
+      uniform bool uSyncToWaveform;
+      uniform float uSyncWaveFrequency;
+      uniform float uSyncWaveAmplitude;
+      uniform float uSyncWaveSpeed;
+      varying vec2 vUv;
+
+      float random (vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+      float noise (in vec2 st) {
+          vec2 i = floor(st); vec2 f = fract(st);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(random(i), random(i + vec2(1.0, 0.0)), u.x) + (random(i + vec2(0.0, 1.0)) - random(i)) * u.y * (1.0 - u.x) + (random(i + vec2(1.0, 1.0)) - random(i + vec2(1.0, 0.0))) * u.x * u.y;
+      }
+      float fbm(in vec2 st) {
+          float value = 0.0; float amplitude = 0.5;
+          for (int i = 0; i < 5; i++) {
+              value += amplitude * noise(st); st *= 2.0; amplitude *= 0.5;
+          }
+          return value;
+      }
+
+      void main() {
+          float distFromCenter = abs(vUv.x - 0.5);
+          float effectiveTime = (uTime * uSolarWind * 0.1) - (distFromCenter / uEmanationSpeed);
+          if (effectiveTime < 0.0) { discard; }
+
+          vec2 correctedUv = vUv; correctedUv.x *= uResolution.x / uResolution.y;
+          vec2 noiseCoord = vec2(correctedUv.x * uFrequency, correctedUv.x * uFrequency + effectiveTime);
+          float noiseValue = fbm(noiseCoord);
+
+          float spineY;
+          if (uSyncToWaveform) {
+              float wave = sin(vUv.x * uSyncWaveFrequency + uTime * uSyncWaveSpeed);
+              spineY = 0.5 + wave * uSyncWaveAmplitude;
+          } else {
+              spineY = uPositionY;
+          }
+
+          float heightNoise = fbm(vec2(correctedUv.x * 1.2, effectiveTime * 0.4));
+          float remappedNoise = (heightNoise - 0.5) * 2.0;
+          float biasedNoise = pow(abs(remappedNoise), uAuroraCurveBias) * sign(remappedNoise);
+          float baseDynamicHeight = uAuroraHeight + biasedNoise * uAuroraHeightVariation;
+
+          float oscillationFactor = sin(effectiveTime * 20.0 + correctedUv.x * 40.0);
+          float dynamicHeight = baseDynamicHeight + oscillationFactor * uRayOscillation;
+
+          dynamicHeight = max(0.01, dynamicHeight);
+
+          float bandBottomEdge = spineY - dynamicHeight / 2.0;
+          float bandTopEdge = spineY + dynamicHeight / 2.0;
+          float fadePercentage = 0.4;
+          float fadeHeight = dynamicHeight * fadePercentage;
+          float verticalBand = smoothstep(bandBottomEdge, bandBottomEdge + fadeHeight, vUv.y) *
+                               (1.0 - smoothstep(bandTopEdge - fadeHeight, bandTopEdge, vUv.y));
+
+          float sparsityMask = smoothstep(uAuroraSparsity, uAuroraSparsity + 0.1, noiseValue);
+          float finalAuroraShape = verticalBand * sparsityMask;
+
+          vec2 rayCoord = vec2(correctedUv.x * uFrequency * 2.0, effectiveTime * 2.0);
+          float rays = fbm(rayCoord);
+          finalAuroraShape *= smoothstep(0.5, 0.7, rays);
+          vec3 color = mix(uColor2, uColor1, finalAuroraShape);
+          gl_FragColor = vec4(color, finalAuroraShape * uVisibility);
+      }
+    </script>
+
+    <!-- REBUILT Fragment Shader for Interactive Aurora -->
+    <script type="x-shader/x-fragment" id="fragmentShaderInteractiveAurora">
+      uniform float uTime;
+      uniform float uFrequency;
+      uniform float uSolarWind;
+      uniform float uVisibility;
+      uniform float uPositionY;
+      uniform float uAuroraHeight;
+      uniform float uRayOscillation;
+      uniform vec3 uColor1;
+      uniform vec3 uColor2;
+      uniform vec2 uResolution;
+      // Mouse-specific uniforms
+      uniform vec2 uMousePos;
+      uniform bool uMouseActive;
+      uniform float uFocusWidth;
+      varying vec2 vUv;
+
+      float random (vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+      float noise (in vec2 st) {
+          vec2 i = floor(st); vec2 f = fract(st);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(random(i), random(i + vec2(1.0, 0.0)), u.x) + (random(i + vec2(0.0, 1.0)) - random(i)) * u.y * (1.0 - u.x) + (random(i + vec2(1.0, 1.0)) - random(i + vec2(1.0, 0.0))) * u.x * u.y;
+      }
+      float fbm(in vec2 st) {
+          float value = 0.0; float amplitude = 0.5;
+          for (int i = 0; i < 5; i++) {
+              value += amplitude * noise(st); st *= 2.0; amplitude *= 0.5;
+          }
+          return value;
+      }
+
+      void main() {
+          if (!uMouseActive) { discard; }
+
+          // Create a "spotlight" mask around the mouse's horizontal position
+          float distFromMouse = abs(vUv.x - uMousePos.x);
+          float focus = 1.0 - smoothstep(0.0, uFocusWidth / 2.0, distFromMouse);
+          if (focus < 0.01) { discard; }
+
+          // The pattern is now generated in a local coordinate system centered on the mouse.
+          float localX = (vUv.x - uMousePos.x) / uFocusWidth;
+
+          float effectiveTime = uTime * uSolarWind;
+
+          vec2 noiseCoord = vec2(localX * uFrequency, effectiveTime);
+          float noiseValue = fbm(noiseCoord);
+
+          float spineY = uPositionY;
+
+          float baseDynamicHeight = uAuroraHeight;
+
+          float oscillationFactor = sin(effectiveTime * 20.0 + vUv.x * 40.0);
+          float dynamicHeight = baseDynamicHeight + oscillationFactor * uRayOscillation;
+
+          dynamicHeight = max(0.01, dynamicHeight);
+
+          float bandBottomEdge = spineY - dynamicHeight / 2.0;
+          float bandTopEdge = spineY + dynamicHeight / 2.0;
+          float fadePercentage = 0.4;
+          float fadeHeight = dynamicHeight * fadePercentage;
+          float verticalBand = smoothstep(bandBottomEdge, bandBottomEdge + fadeHeight, vUv.y) *
+                               (1.0 - smoothstep(bandTopEdge - fadeHeight, bandTopEdge, vUv.y));
+
+          float finalAuroraShape = verticalBand * noiseValue * focus;
+
+          vec3 color = mix(uColor1, uColor2, noiseValue);
+          gl_FragColor = vec4(color, finalAuroraShape * uVisibility);
+      }
+    </script>
+
+    <!-- Fragment Shader for Schrödinger-inspired Waveform -->
+    <script type="x-shader/x-fragment" id="fragmentShaderWaveform">
+      uniform float uTime;
+      uniform float uWaveFrequency;
+      uniform float uWaveAmplitude;
+      uniform float uWaveSpeed;
+      uniform float uGlowSize;
+      uniform float uWaveThickness;
+      uniform float uFringeAmount;
+      uniform vec3 uWaveColor;
+      uniform vec2 uResolution;
+      varying vec2 vUv;
+
+      float random (vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+      float noise (in vec2 st) {
+          vec2 i = floor(st); vec2 f = fract(st);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(random(i), random(i + vec2(1.0, 0.0)), u.x) + (random(i + vec2(0.0, 1.0)) - random(i)) * u.y * (1.0 - u.x) + (random(i + vec2(1.0, 1.0)) - random(i + vec2(1.0, 0.0))) * u.x * u.y;
+      }
+
+      void main() {
+          float y = vUv.y - 0.5;
+          float wave = sin(vUv.x * uWaveFrequency + uTime * uWaveSpeed);
+          float fuzziness = noise(vec2(vUv.x * 5.0, uTime * 0.2)) * 0.2 - 0.1;
+          wave += fuzziness;
+          wave *= uWaveAmplitude;
+          float thicknessModulation = noise(vec2(vUv.x * 2.0, uTime * 0.3));
+          float dynamicGlowSize = uGlowSize + thicknessModulation * uWaveThickness;
+          float fringeOffset = uFringeAmount * 0.01;
+          float distR = abs(y - (wave + fringeOffset));
+          float intensityR = pow(1.0 - smoothstep(0.0, dynamicGlowSize, distR), 2.0);
+          float distG = abs(y - wave);
+          float intensityG = pow(1.0 - smoothstep(0.0, dynamicGlowSize, distG), 2.0);
+          float distB = abs(y - (wave - fringeOffset));
+          float intensityB = pow(1.0 - smoothstep(0.0, dynamicGlowSize, distB), 2.0);
+          vec3 finalColor = uWaveColor * vec3(intensityR, intensityG, intensityB);
+          float finalAlpha = max(intensityR, max(intensityG, intensityB));
+          gl_FragColor = vec4(finalColor, finalAlpha);
+      }
+    </script>
+
+    <!-- Three.js and GUI library imports -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module" src="aurora.js"></script>
+
+    <script type="module">
+      import { initializeAuroraVisualization } from './aurora.js'
+
+      // Initialize all containers
+      document.querySelectorAll('.twilight-background').forEach((container) => {
+        initializeAuroraVisualization({
+          containerSelector: `.twilight-background`,
+          createCanvas: true,
+        })
+      })
+    </script>
+  </body>
+</html>

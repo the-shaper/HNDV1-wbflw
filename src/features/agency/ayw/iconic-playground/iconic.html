@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Metaball SVG Weight Map Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        background-color: #1a202c;
+        color: #e2e8f0;
+      }
+      #container {
+        width: 100vw;
+        min-height: 100vh; /* Allow container to grow */
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* Horizontally center children */
+        justify-content: flex-start; /* Align children to the top */
+        padding-top: 6rem; /* Add 6rem space from the top */
+        padding-bottom: 2rem; /* Add some space at the bottom */
+        box-sizing: border-box;
+      }
+      #canvasContainer {
+        width: 80%;
+        max-width: 800px;
+        aspect-ratio: 1/1;
+        border: 1px solid #4a5568;
+        margin-bottom: 20px; /* Space between canvas and controls */
+        position: relative;
+        background-color: #2d3748;
+      }
+      canvas {
+        display: block;
+      }
+      .controls {
+        background-color: #2d3748;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        width: 80%;
+        max-width: 800px;
+      }
+      .control-group {
+        display: flex;
+        flex-direction: column;
+      }
+      .control-group label {
+        margin-bottom: 5px;
+        font-size: 0.9em;
+        color: #a0aec0;
+      }
+      .control-group input[type='color'],
+      .control-group input[type='range'],
+      .control-group input[type='number'],
+      .control-group input[type='file'],
+      .control-group button,
+      .control-group select {
+        padding: 8px;
+        border-radius: 4px;
+        border: 1px solid #4a5568;
+        background-color: #1a202c;
+        color: #e2e8f0;
+      }
+      .control-group input[type='checkbox'] {
+        margin-right: 5px;
+      }
+      .control-group button {
+        cursor: pointer;
+        background-color: #4299e1;
+        border-color: #4299e1;
+        transition: background-color 0.3s;
+      }
+      .control-group button:hover {
+        background-color: #3182ce;
+      }
+      #svgPreview {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+        opacity: 0.5;
+      }
+      #svgPreview svg {
+        width: 100%;
+        height: 100%;
+      } /* This preview will still stretch, the effect uses the processed map */
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="canvasContainer">
+        <canvas id="blobCanvas"></canvas>
+        <div id="svgPreview"></div>
+      </div>
+      <div class="controls">
+        <div class="control-group">
+          <label for="colorPicker">Blob Color:</label>
+          <input type="color" id="colorPicker" value="#FF007F" />
+        </div>
+        <div class="control-group">
+          <label for="strengthSlider">Blob Strength/Threshold:</label>
+          <input
+            type="range"
+            id="strengthSlider"
+            min="0.01"
+            max="1.0"
+            step="0.01"
+            value="0.15"
+          />
+        </div>
+        <div class="control-group">
+          <label for="baseSizeSlider">Base Particle Size:</label>
+          <input
+            type="range"
+            id="baseSizeSlider"
+            min="0.05"
+            max="0.5"
+            step="0.01"
+            value="0.20"
+          />
+        </div>
+        <div class="control-group">
+          <label for="speedSlider">Particle Speed:</label>
+          <input
+            type="range"
+            id="speedSlider"
+            min="0.001"
+            max="0.02"
+            step="0.001"
+            value="0.005"
+          />
+        </div>
+        <div class="control-group">
+          <label for="numParticlesSlider">Number of Particles:</label>
+          <input
+            type="range"
+            id="numParticlesSlider"
+            min="3"
+            max="20"
+            step="1"
+            value="10"
+          />
+        </div>
+        <div class="control-group">
+          <label for="blurAmountSlider">SVG Blur Amount (px):</label>
+          <input
+            type="range"
+            id="blurAmountSlider"
+            min="0"
+            max="20"
+            step="1"
+            value="4"
+          />
+        </div>
+        <div class="control-group">
+          <label for="svgScaleSlider">SVG Guide Scale:</label>
+          <input
+            type="range"
+            id="svgScaleSlider"
+            min="0.1"
+            max="2.0"
+            step="0.05"
+            value="1.0"
+          />
+        </div>
+        <div class="control-group">
+          <label for="keepProportionsToggle">Keep SVG Proportions:</label>
+          <input type="checkbox" id="keepProportionsToggle" checked />
+        </div>
+        <div class="control-group">
+          <label for="sizeVariationToggle"
+            >Size Variation (Distance based):</label
+          >
+          <input type="checkbox" id="sizeVariationToggle" />
+          <span class="text-xs text-gray-400">Shader varies influence</span>
+        </div>
+        <div class="control-group">
+          <label for="svgUpload">Upload SVG Mask:</label>
+          <input type="file" id="svgUpload" accept=".svg" />
+        </div>
+        <div class="control-group">
+          <label for="showSvgMaskToggle">Show SVG Shape (Preview):</label>
+          <input type="checkbox" id="showSvgMaskToggle" checked />
+        </div>
+        <div class="control-group">
+          <button id="resetParticlesButton">Reset Particles</button>
+        </div>
+        <div class="control-group">
+          <label for="defaultSvgSelector">Load Default SVG:</label>
+          <select id="defaultSvgSelector">
+            <option value="donut">Donut/Torus</option>
+            <option value="star">Star</option>
+            <option value="heart">Heart</option>
+            <option value="none">None (Full Canvas)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let scene, camera, renderer, material, mesh
+      let metaballs = []
+      let uniforms
+
+      let weightMapCanvas, weightMapContext, weightMapTexture
+      let currentSvgContent = ''
+      let currentBlurAmount = 4
+      let currentSvgScale = 1.0
+      let currentKeepProportions = true
+
+      const defaultSvgs = {
+        donut: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <path fill="white" d="M50,10 A40,40 0 1,1 50,90 A40,40 0 1,1 50,10 Z M50,30 A20,20 0 1,0 50,70 A20,20 0 1,0 50,30 Z"/>
+                    </svg>`,
+        star: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                       <polygon fill="white" points="50,5 61,35 95,35 67,57 78,87 50,68 22,87 33,57 5,35 39,35"/>
+                   </svg>`,
+        heart: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <path fill="white" d="M50,30 C25,0 0,20 0,40 C0,70 50,100 50,100 C50,100 100,70 100,40 C100,20 75,0 50,30 Z"/>
+                    </svg>`,
+        none: '',
+      }
+
+      const canvasElement = document.getElementById('blobCanvas')
+      const canvasContainer = document.getElementById('canvasContainer')
+      const colorPicker = document.getElementById('colorPicker')
+      const strengthSlider = document.getElementById('strengthSlider')
+      const baseSizeSlider = document.getElementById('baseSizeSlider')
+      const speedSlider = document.getElementById('speedSlider')
+      const numParticlesSlider = document.getElementById('numParticlesSlider')
+      const blurAmountSlider = document.getElementById('blurAmountSlider')
+      const svgScaleSlider = document.getElementById('svgScaleSlider')
+      const keepProportionsToggle = document.getElementById(
+        'keepProportionsToggle'
+      )
+      const sizeVariationToggle = document.getElementById('sizeVariationToggle')
+      const svgUpload = document.getElementById('svgUpload')
+      const showSvgMaskToggle = document.getElementById('showSvgMaskToggle')
+      const svgPreview = document.getElementById('svgPreview')
+      const resetParticlesButton = document.getElementById(
+        'resetParticlesButton'
+      )
+      const defaultSvgSelector = document.getElementById('defaultSvgSelector')
+
+      const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `
+
+      const fragmentShader = `
+            uniform vec3 u_color;
+            uniform vec2 u_resolution;
+            uniform vec3 u_metaballs[20];
+            uniform int u_num_metaballs;
+            uniform float u_strength;
+            uniform bool u_size_variation;
+            uniform sampler2D u_weight_map;
+            uniform bool u_use_weight_map;
+            varying vec2 vUv;
+
+            float metaballFunction(vec2 pixelPos, vec2 ballCenter, float ballRadius) {
+                float distSq = dot(pixelPos - ballCenter, pixelPos - ballCenter);
+                float radiusSq = ballRadius * ballRadius;
+                if (distSq > radiusSq) return 0.0;
+                float val = (radiusSq - distSq) / radiusSq;
+                return val * val * val;
+            }
+
+            void main() {
+                vec2 scaledUv = vUv;
+                float sumOfInfluences = 0.0;
+
+                for (int i = 0; i < 20; ++i) {
+                    if (i >= u_num_metaballs) break;
+                    vec3 currentMetaball = u_metaballs[i];
+                    vec2 ballPosition = currentMetaball.xy;
+                    float ballRadius = currentMetaball.z;
+                    if (u_size_variation) {
+                        float distToCanvasCenter = distance(ballPosition, vec2(0.5, 0.5));
+                        ballRadius *= (1.0 - distToCanvasCenter * 0.5);
+                        ballRadius = max(0.01, ballRadius);
+                    }
+                    sumOfInfluences += metaballFunction(scaledUv, ballPosition, ballRadius);
+                }
+
+                float weightMapAlpha = 1.0;
+                if (u_use_weight_map) {
+                    weightMapAlpha = texture2D(u_weight_map, vUv).a;
+                }
+
+                if (sumOfInfluences * weightMapAlpha > u_strength) {
+                    gl_FragColor = vec4(u_color, 1.0);
+                } else {
+                    discard;
+                }
+            }
+        `
+
+      function init() {
+        scene = new THREE.Scene()
+        camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0.1, 100)
+        camera.position.z = 1
+
+        renderer = new THREE.WebGLRenderer({
+          canvas: canvasElement,
+          alpha: true,
+        })
+        renderer.setPixelRatio(window.devicePixelRatio)
+
+        weightMapCanvas = document.createElement('canvas')
+        weightMapContext = weightMapCanvas.getContext('2d', {
+          willReadFrequently: true,
+        })
+        weightMapTexture = new THREE.CanvasTexture(weightMapCanvas)
+        weightMapTexture.minFilter = THREE.LinearFilter
+        weightMapTexture.magFilter = THREE.LinearFilter
+
+        currentBlurAmount = parseInt(blurAmountSlider.value)
+        currentSvgScale = parseFloat(svgScaleSlider.value)
+        currentKeepProportions = keepProportionsToggle.checked
+
+        uniforms = {
+          u_color: { value: new THREE.Color(colorPicker.value) },
+          u_time: { value: 0.0 },
+          u_resolution: { value: new THREE.Vector2() },
+          u_metaballs: { value: [] },
+          u_num_metaballs: { value: parseInt(numParticlesSlider.value) },
+          u_strength: { value: parseFloat(strengthSlider.value) },
+          u_size_variation: { value: sizeVariationToggle.checked },
+          u_weight_map: { value: weightMapTexture },
+          u_use_weight_map: { value: true },
+        }
+
+        material = new THREE.ShaderMaterial({
+          uniforms: uniforms,
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+          transparent: true,
+        })
+
+        const geometry = new THREE.PlaneGeometry(1, 1)
+        mesh = new THREE.Mesh(geometry, material)
+        scene.add(mesh)
+
+        initMetaballs()
+        loadSvgContent(defaultSvgs.donut)
+
+        colorPicker.addEventListener('input', (e) =>
+          uniforms.u_color.value.set(e.target.value)
+        )
+        strengthSlider.addEventListener(
+          'input',
+          (e) => (uniforms.u_strength.value = parseFloat(e.target.value))
+        )
+        baseSizeSlider.addEventListener('input', (e) => {
+          updateMetaballUniform()
+        })
+        speedSlider.addEventListener('input', updateMetaballSpeeds)
+        numParticlesSlider.addEventListener('input', (e) => {
+          uniforms.u_num_metaballs.value = parseInt(e.target.value)
+          initMetaballs()
+        })
+        blurAmountSlider.addEventListener('input', (e) => {
+          currentBlurAmount = parseInt(e.target.value)
+          if (currentSvgContent && currentSvgContent.trim() !== '') {
+            loadSvgContent(currentSvgContent)
+          }
+        })
+        svgScaleSlider.addEventListener('input', (e) => {
+          currentSvgScale = parseFloat(e.target.value)
+          if (currentSvgContent && currentSvgContent.trim() !== '') {
+            loadSvgContent(currentSvgContent)
+          }
+        })
+        keepProportionsToggle.addEventListener('change', (e) => {
+          currentKeepProportions = e.target.checked
+          if (currentSvgContent && currentSvgContent.trim() !== '') {
+            loadSvgContent(currentSvgContent)
+          }
+        })
+        sizeVariationToggle.addEventListener(
+          'change',
+          (e) => (uniforms.u_size_variation.value = e.target.checked)
+        )
+        svgUpload.addEventListener('change', handleSvgUpload)
+        showSvgMaskToggle.addEventListener('change', toggleSvgVisibility)
+        resetParticlesButton.addEventListener('click', initMetaballs)
+        defaultSvgSelector.addEventListener('change', (e) => {
+          const selectedSvgKey = e.target.value
+          loadSvgContent(defaultSvgs[selectedSvgKey] || '')
+        })
+
+        window.addEventListener('resize', onWindowResize)
+        onWindowResize()
+        animate()
+      }
+
+      function initMetaballs() {
+        metaballs = []
+        const numMetaballs = parseInt(numParticlesSlider.value)
+        const baseSpeed = parseFloat(speedSlider.value)
+
+        for (let i = 0; i < numMetaballs; i++) {
+          metaballs.push({
+            x: Math.random(),
+            y: Math.random(),
+            vx: (Math.random() - 0.5) * baseSpeed * 2,
+            vy: (Math.random() - 0.5) * baseSpeed * 2,
+          })
+        }
+        uniforms.u_num_metaballs.value = numMetaballs
+        updateMetaballUniform()
+      }
+
+      function updateMetaballSpeeds() {
+        const newBaseSpeed = parseFloat(speedSlider.value)
+        metaballs.forEach((mb) => {
+          const currentSpeedMagnitude = Math.sqrt(mb.vx * mb.vx + mb.vy * mb.vy)
+          if (currentSpeedMagnitude > 0.00001) {
+            mb.vx = (mb.vx / currentSpeedMagnitude) * newBaseSpeed
+            mb.vy = (mb.vy / currentSpeedMagnitude) * newBaseSpeed
+          } else {
+            const angle = Math.random() * Math.PI * 2
+            mb.vx = Math.cos(angle) * newBaseSpeed
+            mb.vy = Math.sin(angle) * newBaseSpeed
+          }
+        })
+      }
+
+      function updateMetaballs() {
+        const mapCanvasWidth = weightMapCanvas.width
+        const mapCanvasHeight = weightMapCanvas.height
+        const useMapCollision =
+          uniforms.u_use_weight_map.value &&
+          currentSvgContent &&
+          currentSvgContent.trim() !== ''
+
+        metaballs.forEach((mb) => {
+          let potentialX_uv = mb.x + mb.vx
+          let potentialY_uv = mb.y + mb.vy
+          let collidedWithMapBoundary = false
+
+          if (
+            useMapCollision &&
+            weightMapContext &&
+            mapCanvasWidth > 0 &&
+            mapCanvasHeight > 0
+          ) {
+            let checkPixelX = Math.floor(potentialX_uv * mapCanvasWidth)
+            let checkPixelY = Math.floor(potentialY_uv * mapCanvasHeight)
+            checkPixelX = Math.max(0, Math.min(mapCanvasWidth - 1, checkPixelX))
+            checkPixelY = Math.max(
+              0,
+              Math.min(mapCanvasHeight - 1, checkPixelY)
+            )
+
+            try {
+              const pixel = weightMapContext.getImageData(
+                checkPixelX,
+                checkPixelY,
+                1,
+                1
+              ).data
+              const alphaAtPotentialPos = pixel[3]
+
+              if (alphaAtPotentialPos < 64) {
+                collidedWithMapBoundary = true
+                mb.vx *= -1
+                mb.vy *= -1
+              }
+            } catch (e) {
+              console.error('Error reading pixel data from weight map:', e, {
+                checkPixelX,
+                checkPixelY,
+              })
+            }
+          }
+
+          if (!collidedWithMapBoundary) {
+            mb.x = potentialX_uv
+            mb.y = potentialY_uv
+          }
+
+          if (mb.x <= 0 && mb.vx < 0) {
+            mb.vx *= -1
+            mb.x = 0.001
+          } else if (mb.x >= 1 && mb.vx > 0) {
+            mb.vx *= -1
+            mb.x = 0.999
+          }
+          if (mb.y <= 0 && mb.vy < 0) {
+            mb.vy *= -1
+            mb.y = 0.001
+          } else if (mb.y >= 1 && mb.vy > 0) {
+            mb.vy *= -1
+            mb.y = 0.999
+          }
+          mb.x = Math.max(0.001, Math.min(0.999, mb.x))
+          mb.y = Math.max(0.001, Math.min(0.999, mb.y))
+        })
+        updateMetaballUniform()
+      }
+
+      function updateMetaballUniform() {
+        const currentBaseSize = parseFloat(baseSizeSlider.value)
+        const numActiveMetaballs = uniforms.u_num_metaballs.value
+        const metaballDataForShader = []
+        for (let i = 0; i < numActiveMetaballs; i++) {
+          if (metaballs[i]) {
+            metaballDataForShader.push(
+              new THREE.Vector3(metaballs[i].x, metaballs[i].y, currentBaseSize)
+            )
+          } else {
+            metaballDataForShader.push(new THREE.Vector3(0, 0, 0))
+          }
+        }
+        for (let i = numActiveMetaballs; i < 20; i++) {
+          metaballDataForShader.push(new THREE.Vector3(0, 0, 0))
+        }
+        uniforms.u_metaballs.value = metaballDataForShader
+      }
+
+      function handleSvgUpload(event) {
+        const file = event.target.files[0]
+        if (file && file.type === 'image/svg+xml') {
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            loadSvgContent(e.target.result)
+          }
+          reader.readAsText(file)
+        } else {
+          console.warn('Please upload a valid SVG file.')
+        }
+      }
+
+      function loadSvgContent(svgString) {
+        currentSvgContent = svgString
+        if (!svgString || svgString.trim() === '') {
+          clearWeightMap()
+          return
+        }
+
+        svgPreview.innerHTML = svgString
+        const svgElement = svgPreview.querySelector('svg')
+
+        if (svgElement) {
+          const canvasSize = 512
+
+          const tempSharpCanvas = document.createElement('canvas')
+          const tempSharpContext = tempSharpCanvas.getContext('2d')
+          tempSharpCanvas.width = canvasSize
+          tempSharpCanvas.height = canvasSize
+
+          weightMapCanvas.width = canvasSize
+          weightMapCanvas.height = canvasSize
+
+          const img = new Image()
+          const svgBlob = new Blob([svgString], {
+            type: 'image/svg+xml;charset=utf-8',
+          })
+          const url = URL.createObjectURL(svgBlob)
+
+          img.onload = () => {
+            let drawWidth = img.naturalWidth
+            let drawHeight = img.naturalHeight
+            let drawX = 0
+            let drawY = 0
+
+            if (currentKeepProportions && drawWidth > 0 && drawHeight > 0) {
+              const aspectRatio = drawWidth / drawHeight
+              if (drawWidth > drawHeight) {
+                drawWidth = canvasSize * currentSvgScale
+                drawHeight = drawWidth / aspectRatio
+              } else {
+                drawHeight = canvasSize * currentSvgScale
+                drawWidth = drawHeight * aspectRatio
+              }
+
+              if (drawWidth > canvasSize) {
+                drawWidth = canvasSize
+                drawHeight = drawWidth / aspectRatio
+              }
+              if (drawHeight > canvasSize) {
+                drawHeight = canvasSize
+                drawWidth = drawHeight * aspectRatio
+              }
+            } else {
+              drawWidth = canvasSize * currentSvgScale
+              drawHeight = canvasSize * currentSvgScale
+            }
+
+            drawWidth = Math.max(1, drawWidth)
+            drawHeight = Math.max(1, drawHeight)
+
+            drawX = (canvasSize - drawWidth) / 2
+            drawY = (canvasSize - drawHeight) / 2
+
+            tempSharpContext.clearRect(0, 0, canvasSize, canvasSize)
+            tempSharpContext.drawImage(img, drawX, drawY, drawWidth, drawHeight)
+
+            weightMapContext.clearRect(0, 0, canvasSize, canvasSize)
+            if (currentBlurAmount > 0) {
+              weightMapContext.filter = `blur(${currentBlurAmount}px)`
+            } else {
+              weightMapContext.filter = 'none'
+            }
+            weightMapContext.drawImage(
+              tempSharpCanvas,
+              0,
+              0,
+              canvasSize,
+              canvasSize
+            )
+            weightMapContext.filter = 'none'
+
+            weightMapTexture.needsUpdate = true
+            uniforms.u_use_weight_map.value = true
+            URL.revokeObjectURL(url)
+          }
+          img.onerror = (e) => {
+            console.error('Error loading SVG into Image for weight map:', e)
+            clearWeightMap()
+            URL.revokeObjectURL(url)
+          }
+          img.src = url
+        } else {
+          console.warn('No SVG element found in string for weight map.')
+          clearWeightMap()
+        }
+        toggleSvgVisibility()
+      }
+
+      function clearWeightMap() {
+        currentSvgContent = ''
+        svgPreview.innerHTML = ''
+        if (weightMapContext && weightMapCanvas) {
+          weightMapContext.clearRect(
+            0,
+            0,
+            weightMapCanvas.width,
+            weightMapCanvas.height
+          )
+        }
+        if (weightMapTexture) weightMapTexture.needsUpdate = true
+        if (uniforms) uniforms.u_use_weight_map.value = false
+      }
+
+      function toggleSvgVisibility() {
+        if (
+          showSvgMaskToggle.checked &&
+          currentSvgContent &&
+          currentSvgContent.trim() !== ''
+        ) {
+          svgPreview.style.display = 'block'
+          if (svgPreview.innerHTML === '') {
+            svgPreview.innerHTML = currentSvgContent
+          }
+        } else {
+          svgPreview.style.display = 'none'
+        }
+      }
+
+      function animate() {
+        requestAnimationFrame(animate)
+        if (uniforms) uniforms.u_time.value += 0.016
+        updateMetaballs()
+        renderer.render(scene, camera)
+      }
+
+      function onWindowResize() {
+        const containerWidth = canvasContainer.clientWidth
+        const containerHeight = canvasContainer.clientHeight
+        renderer.setSize(containerWidth, containerHeight)
+        if (uniforms && uniforms.u_resolution) {
+          uniforms.u_resolution.value.set(containerWidth, containerHeight)
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init)
+      } else {
+        init()
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js Flame Shader</title>
+    <style>
+      /* Ensure the container has dimensions on the test page */
+      .tf-fringe-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+    <link rel="stylesheet" href="twilightFringe.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Add this import map -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <!-- The organiser for the Twilight Fringe background effect -->
+    <div class="twilight-fringe tf-fringe-bg" data-show-gui="true"></div>
+
+    <!-- Main JavaScript -->
+    <!-- The importmap is no longer needed as twilightFringe.js now imports directly from a CDN -->
+    <!-- 
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+        }
+      }
+    </script>
+    -->
+    <!-- Twilight Fringe script auto-initialises instances with the `.tf-fringe-bg` class -->
+    <script type="module" src="twilightFringe.js"></script>
+  </body>
+</html>

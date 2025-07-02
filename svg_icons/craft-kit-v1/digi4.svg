@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 167.58 167.58" width="auto" height="auto">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: currentColor;
+      }
+    </style>
+  </defs>
+  <g id="Layer_4" data-name="Layer 4">
+    <rect class="cls-1" x="146.65" y=".03" width="20.93" height="20.93"/>
+    <rect class="cls-1" x="20.93" y="136.18" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="41.91" y="115.21" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="31.4" y="31.4" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="41.91" y="41.91" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="125.69" y="31.43" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="136.15" y="136.15" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="115.21" y="115.21" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="115.22" y="41.9" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="62.86" y="52.35" width="41.9" height="62.86"/>
+    <rect class="cls-1" x="125.69" y="62.83" width="41.9" height="41.9"/>
+    <rect class="cls-1" x=".03" y="62.83" width="41.9" height="41.9"/>
+    <rect class="cls-1" y="0" width="20.93" height="20.93"/>
+    <rect class="cls-1" x=".03" y="146.62" width="20.93" height="20.93"/>
+    <rect class="cls-1" x="146.62" y="146.65" width="20.93" height="20.93"/>
+  </g>
+</svg>

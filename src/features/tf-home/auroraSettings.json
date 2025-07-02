@@ -1,0 +1,17 @@
+{
+  "A": {
+    "auroraFrequency": 2.0,
+    "auroraSolarWind": 1.0,
+    "auroraVisibility": 1.0,
+    "auroraPositionY": 0.5,
+    "auroraHeight": 0.3,
+    "auroraColor1": "#00ff88",
+    "auroraColor2": "#ff0044",
+    "waveformVisible": true,
+    "waveFrequency": 8.0,
+    "waveAmplitude": 0.15,
+    "waveSpeed": 2.0,
+    "waveColor": "#ffffff"
+  },
+  "B": {}
+}

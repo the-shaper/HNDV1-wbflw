@@ -1,0 +1,29 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+  color: #fff;
+  background-color: #111;
+}
+
+/* 
+The .twilight-fringe styles are no longer needed here, 
+as the JavaScript now handles container positioning.
+This makes the component more portable.
+*/
+
+/* Ensure lil-gui is styled correctly */
+.lil-gui {
+  --background-color: #1f1f1f;
+  --text-color: #ebebeb;
+  --title-background-color: #111111;
+  --title-text-color: #ebebeb;
+  --widget-color: #424242;
+  --hover-color: #4f4f4f;
+  --focus-color: #5a5a5a;
+  --number-color: #2cc9ff;
+  --string-color: #b3e42c;
+  --font-family: 'Inter', sans-serif;
+  --font-size: 11px;
+  z-index: 1000 !important;
+}

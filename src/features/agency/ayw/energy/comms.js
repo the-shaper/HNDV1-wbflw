@@ -35,6 +35,10 @@ let rvIconSequenceCurrentLogicalIndex = 0 // 0, 1, or 2, represents the step in 
 let rvIconSequenceActiveDOMElement = null // Stores the DOM element that is currently "on"
 let rvIconSequenceLastUsedSuffix = null // Stores the suffix string used by the last sequence
 
+// --- New module-scoped variables for energyCore rotation and bounce ---
+let energyCoreRotationAnimation = null
+const ENERGY_CORE_SELECTOR = '#energyCore'
+
 // --- Configuration Modes ---
 const commsModeConfigs = {
   A: {
@@ -59,6 +63,12 @@ const commsModeConfigs = {
     rvIconSequenceDirection: 'backward', // 'forward' (1->2->3) or 'backward' (3->2->1)
     rvIconLitDurationMs: 333, // How long each icon stays lit
     rvIconSequenceLoopDelayMs: 1990, // Pause AFTER a full 1,2,3 sequence
+    // --- New energyCore rotation parameters for Mode A ---
+    energyCoreRotationDegrees: -360, // Resting position
+    energyCoreRotationDuration: 111, // Duration for the rotation animation in ms
+    energyCoreRotationEasing: 'easeInOutQuad', // Easing function
+    energyCoreBounceScales: [1, 0.85, 1.15, 1], // Bounce sequence: base -> small -> big -> base
+    energyCoreBounceTimings: [0, 25, 60, 100], // Timing percentages for each scale step
   },
   B: {
     durationPerDot: 300,
@@ -82,6 +92,12 @@ const commsModeConfigs = {
     rvIconSequenceDirection: 'backward', // 'forward' (1->2->3) or 'backward' (3->2->1)
     rvIconLitDurationMs: 222, // How long each icon stays lit
     rvIconSequenceLoopDelayMs: 444, // Pause AFTER a full 1,2,3 sequence
+    // --- New energyCore rotation parameters for Mode B ---
+    energyCoreRotationDegrees: 180, // 180 degrees rotation
+    energyCoreRotationDuration: 111, // Slightly faster duration for Mode B
+    energyCoreRotationEasing: 'easeInOutQuad', // Easing function
+    energyCoreBounceScales: [1, 0.8, 1.2, 1], // More dramatic bounce for Mode B
+    energyCoreBounceTimings: [0, 30, 65, 100], // Slightly different timing for variety
   },
 }
 
@@ -359,6 +375,73 @@ function updateRvIconSequence(config) {
   // 5. Start the first step of the sequence
   // Add a small delay before starting if desired, or start immediately
   rvIconSequenceTimeoutId = setTimeout(executeRvIconStep, 0) // Start immediately
+}
+
+/**
+ * Manages the rotation and bounce scale animation for the energyCore element.
+ * @param {object} config - The activeCommsConfig for the current mode.
+ */
+function updateEnergyCoreRotation(config) {
+  const energyCoreElement = document.querySelector(ENERGY_CORE_SELECTOR)
+  if (!energyCoreElement) {
+    console.warn(
+      `[comms.js] Element "${ENERGY_CORE_SELECTOR}" not found for rotation.`
+    )
+    return
+  }
+
+  // Stop any existing animation
+  if (energyCoreRotationAnimation) {
+    energyCoreRotationAnimation.pause()
+    anime.remove(energyCoreElement) // Remove previous animation instance
+    energyCoreRotationAnimation = null
+  }
+
+  const targetRotation = config.energyCoreRotationDegrees
+  const duration = config.energyCoreRotationDuration
+  const easing = config.energyCoreRotationEasing
+  const bounceScales = config.energyCoreBounceScales || [1, 0.85, 1.15, 1]
+  const bounceTimings = config.energyCoreBounceTimings || [0, 25, 60, 100]
+
+  // Validate parameters
+  if (
+    typeof targetRotation !== 'number' ||
+    typeof duration !== 'number' ||
+    duration <= 0 ||
+    !Array.isArray(bounceScales) ||
+    !Array.isArray(bounceTimings) ||
+    bounceScales.length !== bounceTimings.length
+  ) {
+    console.warn(
+      '[comms.js] Invalid energyCore animation parameters. Animation stopped.'
+    )
+    energyCoreElement.style.transform = 'rotate(0deg) scale(1)' // Reset to default
+    return
+  }
+
+  // Create scale keyframes based on timing percentages
+  const scaleKeyframes = bounceScales.map((scale, index) => ({
+    value: scale,
+    duration:
+      index === 0
+        ? 0
+        : ((bounceTimings[index] - bounceTimings[index - 1]) / 100) * duration,
+    easing: index === bounceScales.length - 1 ? 'easeOutBack' : 'easeInOutQuad',
+  }))
+
+  // Create the combined rotation and bounce animation
+  energyCoreRotationAnimation = anime({
+    targets: energyCoreElement,
+    rotate: targetRotation + 'deg',
+    scale: scaleKeyframes,
+    duration: duration,
+    easing: easing, // This applies to rotation, scale uses its own easing per keyframe
+    complete: function () {
+      console.log(
+        `[comms.js] energyCore animated to ${targetRotation} degrees with bounce effect`
+      )
+    },
+  })
 }
 
 /**
@@ -731,6 +814,10 @@ export function setCommsConfigMode(modeName) {
 
   // --- NEW: Update RV Icon Sequence ---
   updateRvIconSequence(activeCommsConfig)
+  // --- END NEW ---
+
+  // --- NEW: Update energyCore rotation ---
+  updateEnergyCoreRotation(activeCommsConfig)
   // --- END NEW ---
 
   // --- NEW: Update #energyTitle class based on mode ---

@@ -16,6 +16,10 @@ class DashboardController {
       craft: document.querySelector('[data-summary="craft"]'),
       energy: document.querySelector('[data-summary="energy"]'), // Add others as needed
       // Add more summaries here, keyed by their data-summary attribute value
+      shaper: document.querySelector('[data-summary="shaper"]'),
+      projectName: document.querySelector('[data-summary="project-name"]'),
+      iconCraft: document.querySelector('[data-summary="icon-craft"]'),
+      iconEnergy: document.querySelector('[data-summary="icon-energy"]'),
     }
     // --- Use data-nav for the primary navigation buttons ---
     this.navPrevButton = document.querySelector('[data-nav="prev"]') // Should select .config-nav-arrows.back-arrow
@@ -38,6 +42,28 @@ class DashboardController {
     this.commitmentScrollDot =
       this.commitmentScrollbarTrack?.querySelector('.scroll-dot')
 
+    // NEW: Cache text display elements by ID
+    this.textTargets = {
+      phone: document.getElementById('dataPhone'),
+      sms: document.getElementById('dataSms'),
+      tasks: document.getElementById('dataTasks'),
+      video: document.getElementById('dataVideoSum'),
+    }
+
+    // NEW: Cache Price Display Element
+    this.priceDisplayElement = document.getElementById('aywLivePrice')
+    if (!this.priceDisplayElement) {
+      console.warn(
+        'Dashboard Controller: Price display element (#aywLivePrice) not found. Price calculation will not be displayed.'
+      )
+    }
+
+    // NEW: Cache Shaper Name Input
+    this.shaperNameInput = document.getElementById('aywShaperName')
+
+    // NEW: Cache Project Name Input
+    this.projectNameInput = document.getElementById('aywProjectName')
+
     // --- Instance Storage ---
     // This assumes the Accordion is initialized elsewhere and we can find it if needed,
     // or it's passed during initialization. For simplicity, we'll assume querySelector works
@@ -47,6 +73,10 @@ class DashboardController {
     // NEW: Track the currently visible config button pane number
     this.activeConfigPaneNumber = null
 
+    // NEW: Store current costs for calculation
+    this.currentCraftCost = 0
+    this.currentEnergyCost = 0
+
     // --- Event Binding ---
     this.handleRadioClick = this.handleRadioClick.bind(this)
     this.handleNavClick = this.handleNavClick.bind(this)
@@ -54,6 +84,8 @@ class DashboardController {
     this.updateNavigationArrows = this.updateNavigationArrows.bind(this)
     // --- NEW: Bind Commitment Scroll Handler ---
     this.handleCommitmentScroll = this.handleCommitmentScroll.bind(this)
+    this.handleShaperNameInput = this.handleShaperNameInput.bind(this)
+    this.handleProjectNameInput = this.handleProjectNameInput.bind(this)
 
     this.init()
   }
@@ -81,6 +113,8 @@ class DashboardController {
       })
 
       // For each unique group, find and 'click' the first radio button's label
+      // Use a slight delay or ensure accordion is ready if necessary,
+      // but handleRadioClick should be idempotent enough for initial calls
       groupNames.forEach((groupName) => {
         const firstInputInGroup = document.querySelector(
           `.ayw-radiobutt input[name="${groupName}"]`
@@ -180,6 +214,40 @@ class DashboardController {
 
     // --- NEW: Initialize Commitment Scrollbar ---
     this.setupCommitmentScrollbar()
+
+    if (!this.shaperNameInput) {
+      console.warn(
+        'Dashboard Controller: Shaper name input field (#aywShaperName) not found. Cannot set up listener.'
+      )
+      return // Exit if critical elements are missing
+    }
+
+    if (!this.summaries.shaper) {
+      console.warn(
+        'Dashboard Controller: Shaper summary element ([data-summary="shaper"]) not found. Shaper name input will not update the summary.'
+      )
+      // We can still add the listener, but it won't do anything if the target is missing
+      // Depending on requirements, you might return here instead
+    }
+
+    this.shaperNameInput.addEventListener('input', this.handleShaperNameInput)
+    console.log('Dashboard Controller: Added input listener to #aywShaperName.')
+
+    // Optional: Trigger an initial update if the input field already has a value on load
+    // No, wait, this should only update the summary, not price logic. Price update is in handleRadioClick.
+    // if (this.shaperNameInput.value && this.summaries.shaper) {
+    //   this.handleShaperNameInput({ target: this.shaperNameInput });
+    // }
+
+    this.setupProjectNameListener()
+
+    // The initial price calculation happens implicitly when the default radio buttons are 'clicked' in the groupNames.forEach loop.
+    // However, if no radio buttons are found or clicked, the price might remain 0.
+    // A fallback could be added here to explicitly calculate and display the initial price if needed,
+    // but the current approach of simulating clicks should cover it.
+    console.log(
+      'Dashboard Controller: Initial setup complete, default radio clicks handle initial price display.'
+    )
   }
 
   // NEW: Sets the initial visible config button wrapper without animation
@@ -214,6 +282,7 @@ class DashboardController {
     const groupName = radioInput.getAttribute('name')
     const selectedValue = radioInput.value
     const dataset = clickedLabel.dataset
+    const selectedCost = parseFloat(dataset.cost || '0') // Get and parse the cost, default to 0 if missing or invalid
 
     // 3. Update summary element
     const summaryElement = this.summaries[groupName]
@@ -238,12 +307,110 @@ class DashboardController {
       }
     }
 
-    // 4. Dispatch events or call functions
+    // 4. Update specific text elements based on data attributes
+    if (this.textTargets.phone && dataset.phone !== undefined) {
+      this.textTargets.phone.textContent = dataset.phone
+      console.log(`Dashboard: Updated #dataPhone with value "${dataset.phone}"`)
+    }
+    if (this.textTargets.sms && dataset.sms !== undefined) {
+      this.textTargets.sms.textContent = dataset.sms
+      console.log(`Dashboard: Updated #dataSms with value "${dataset.sms}"`)
+    }
+    if (this.textTargets.tasks && dataset.tasks !== undefined) {
+      this.textTargets.tasks.textContent = dataset.tasks
+      console.log(`Dashboard: Updated #dataTasks with value "${dataset.tasks}"`)
+    }
+    if (this.textTargets.video && dataset.video !== undefined) {
+      this.textTargets.video.textContent = dataset.video
+      console.log(`Dashboard: Updated #dataVideo with value "${dataset.video}"`)
+    }
+
+    // Update classes on text target elements if the group is 'energy'
+    if (groupName === 'energy') {
+      const targetElements = [
+        this.textTargets.phone,
+        this.textTargets.sms,
+        this.textTargets.tasks,
+        this.textTargets.video,
+      ].filter((element) => element !== null) // Filter out any elements not found
+
+      const buttonValue = dataset.button // Get the data-button value
+
+      if (buttonValue === '3') {
+        // Corresponds to the "orange" mode based on icon logic
+        targetElements.forEach((element) => {
+          element.classList.add('orange')
+          element.classList.remove('blue')
+        })
+        console.log(
+          "Dashboard: Added '.orange' and removed '.blue' classes from text targets for energy mode 3."
+        )
+      } else if (buttonValue === '4') {
+        // Corresponds to the "blue" mode based on icon logic
+        targetElements.forEach((element) => {
+          element.classList.add('blue')
+          element.classList.remove('orange')
+        })
+        console.log(
+          "Dashboard: Added '.blue' and removed '.orange' classes from text targets for energy mode 4."
+        )
+      } else {
+        console.warn(
+          `Dashboard: Unhandled button value "${buttonValue}" for energy group text target class update.`
+        )
+      }
+    }
+
+    // NEW: Update stored cost based on group
+    if (groupName === 'craft') {
+      this.currentCraftCost = selectedCost
+      console.log(
+        `Dashboard: Updated currentCraftCost to ${this.currentCraftCost}`
+      )
+    } else if (groupName === 'energy') {
+      this.currentEnergyCost = selectedCost
+      console.log(
+        `Dashboard: Updated currentEnergyCost to ${this.currentEnergyCost}`
+      )
+    } else {
+      console.warn(
+        `Dashboard: Unhandled radio group "${groupName}" for cost storage.`
+      )
+      // Don't return here, we still want to update the display based on the OTHER costs if applicable
+      // e.g. if a non-cost affecting button is clicked, the price display shouldn't disappear.
+    }
+
+    // NEW: Calculate the total price (sum of current craft and energy costs)
+    const priceToDisplay = this.currentCraftCost + this.currentEnergyCost
+    console.log(
+      `Dashboard: Calculating total price: Craft=${this.currentCraftCost}, Energy=${this.currentEnergyCost}, Total=${priceToDisplay}`
+    )
+
+    // Update the price display element if found
+    if (this.priceDisplayElement) {
+      // Format the number using toLocaleString for thousand separators and no decimals
+      const formattedPrice = priceToDisplay.toLocaleString(undefined, {
+        // Use undefined for default locale or specify 'en-US'
+        minimumFractionDigits: 0, // Ensure no decimal places
+        maximumFractionDigits: 0, // Ensure no decimal places
+      })
+
+      // Prepend the dollar sign
+      this.priceDisplayElement.textContent = `$${formattedPrice}`
+      console.log(`Dashboard: Updated #aywLivePrice to $${formattedPrice}`)
+    } else {
+      console.warn(
+        'Dashboard: Cannot update price display, #aywLivePrice element not found.'
+      )
+    }
+
+    // 5. Dispatch events or call functions
     const eventDetail = {
       group: groupName,
       value: selectedValue,
       element: clickedLabel,
       dataset: dataset,
+      cost: selectedCost, // Include the cost in the event detail
     }
 
     if (groupName === 'craft') {
@@ -270,8 +437,29 @@ class DashboardController {
           `Dashboard: No data-set-mode attribute found on clicked energy radio label.`
         )
       }
+      document.dispatchEvent(
+        new CustomEvent('energySettingsChanged', { detail: eventDetail })
+      )
+      console.log('Dispatched energySettingsChanged:', eventDetail)
     }
     // Add 'else if' for other radio groups
+
+    // Update icon classes based on group and dataset.button
+    if (groupName === 'craft' && this.summaries.iconCraft) {
+      this.summaries.iconCraft.classList.remove('craft1', 'craft2')
+      if (dataset.button === '1') {
+        this.summaries.iconCraft.classList.add('craft1')
+      } else if (dataset.button === '2') {
+        this.summaries.iconCraft.classList.add('craft2')
+      }
+    } else if (groupName === 'energy' && this.summaries.iconEnergy) {
+      this.summaries.iconEnergy.classList.remove('energy1', 'energy2')
+      if (dataset.button === '3') {
+        this.summaries.iconEnergy.classList.add('energy1')
+      } else if (dataset.button === '4') {
+        this.summaries.iconEnergy.classList.add('energy2')
+      }
+    }
   }
 
   handleNavClick(action) {
@@ -540,6 +728,50 @@ class DashboardController {
     scrollDot.style.top = `${finalDotPosition}px`
   }
   // --- End NEW Methods ---
+
+  // --- NEW Method to Setup Project Name Listener ---
+  setupProjectNameListener() {
+    if (!this.projectNameInput) {
+      console.warn(
+        'Dashboard Controller: Project name input field (#aywProjectName) not found. Cannot set up listener.'
+      )
+      return
+    }
+
+    if (!this.summaries.projectName) {
+      console.warn(
+        'Dashboard Controller: Project name summary element ([data-summary="project-name"]) not found. Project name input will not update the summary.'
+      )
+      // We can still add the listener, but it won't do anything if the target is missing
+      // Depending on requirements, you might return here instead
+    }
+
+    this.projectNameInput.addEventListener('input', this.handleProjectNameInput)
+    console.log(
+      'Dashboard Controller: Added input listener to #aywProjectName.'
+    )
+
+    // Optional: Trigger an initial update if the input field already has a value on load
+    if (this.projectNameInput.value && this.summaries.projectName) {
+      this.handleProjectNameInput({ target: this.projectNameInput })
+    }
+  }
+
+  // NEW: Handler for the shaper name input field
+  handleShaperNameInput(event) {
+    // Use optional chaining for safety if shaperSummary might be null
+    if (this.summaries.shaper) {
+      this.summaries.shaper.textContent = event.target.value
+    }
+  }
+
+  // NEW: Handler for the project name input field
+  handleProjectNameInput(event) {
+    // Use optional chaining for safety if projectNameSummary might be null
+    if (this.summaries.projectName) {
+      this.summaries.projectName.textContent = event.target.value
+    }
+  }
 }
 
 // Function to initialize the controller

@@ -1,0 +1,20 @@
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 167.58 167.58">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: currentColor;
+      }
+    </style>
+  </defs>
+  <g id="Layer_4" data-name="Layer 4">
+    <rect class="cls-1" x="104.75" y="41.9" width="20.93" height="20.93"/>
+    <rect class="cls-1" x="104.75" y="104.75" width="20.93" height="20.93"/>
+    <rect class="cls-1" x="41.9" y="104.75" width="20.93" height="20.93"/>
+    <rect class="cls-1" y="157.12" width="10.47" height="10.47"/>
+    <rect class="cls-1" y="0" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="157.12" y="0" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="157.12" y="157.12" width="10.47" height="10.47"/>
+    <rect class="cls-1" x="62.86" y="62.83" width="41.9" height="41.9"/>
+    <rect class="cls-1" x="41.9" y="41.9" width="20.93" height="20.93"/>
+  </g>
+</svg>

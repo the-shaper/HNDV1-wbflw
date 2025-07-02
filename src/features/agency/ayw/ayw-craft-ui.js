@@ -8,6 +8,10 @@ function initAYWCraftUI() {
       this.craftItems = document.querySelectorAll('.craft-readme-dynamic')
       this.closeButtons = document.querySelectorAll('.close-btn-wrapper')
       this.accordionTabs = document.querySelectorAll('.ayw-accordion-tab')
+      // Cache the dynamic read-me elements controlled by the accordion
+      this.dynamicReadMeElements = document.querySelectorAll(
+        '.ayw-dynamic-read-me.tab1'
+      )
 
       // Track last clicked icon
       this.lastClickedIcon = null
@@ -36,6 +40,12 @@ function initAYWCraftUI() {
     init() {
       // Initialize icon states before setting up event listeners
       this.initializeIconStates()
+
+      // Ensure all craft items are in their default hidden state (as per CSS)
+      // by removing 'is-shown' class if it was somehow present.
+      this.craftItems.forEach((item) => {
+        item.classList.remove('is-shown')
+      })
 
       // Add click and hover listeners to all grid icons
       this.gridIcons.forEach((icon) => {
@@ -67,12 +77,19 @@ function initAYWCraftUI() {
         tab.addEventListener('click', this.closeModal)
       })
 
-      // Close modal when clicking outside (optional)
+      // Close modal when clicking directly on the modal backdrop
       this.modal?.addEventListener('click', (e) => {
         if (e.target === this.modal) {
           this.closeModal()
         }
       })
+
+      // Add new listener for clicks anywhere else on the document
+      document.addEventListener(
+        'click',
+        this.handleDocumentClickForModalClose.bind(this),
+        true // Use capture phase
+      )
 
       // Listen for custom event from DashboardController
       document.addEventListener(
@@ -223,19 +240,21 @@ function initAYWCraftUI() {
       // Update last clicked icon
       this.lastClickedIcon = clickedIcon
 
-      // Hide all craft items first
+      // Hide all craft items first by removing the .is-shown class
       this.craftItems.forEach((item) => {
-        item.style.display = 'none'
+        item.classList.remove('is-shown')
       })
 
-      // Find and show the matching craft item
+      // Find and show the matching craft item by adding the .is-shown class
       const matchingCraftItem = Array.from(this.craftItems).find(
         (item) => item.getAttribute('data-craft') === craftId
       )
 
       if (matchingCraftItem) {
-        matchingCraftItem.style.display = 'flex' // Or 'block', depending on layout needs
+        matchingCraftItem.classList.add('is-shown')
         this.modal?.classList.add('is-active')
+        // When modal opens, add .off to all dynamic read-me elements
+        this.dynamicReadMeElements.forEach((el) => el.classList.add('off'))
       }
     }
 
@@ -261,6 +280,60 @@ function initAYWCraftUI() {
       this.lastClickedIcon = null
       // Remove .any-clicked from all icons and reset their level indicators
       this.removeAnyClickedFromAllIcons()
+
+      // Also ensure the currently visible craft item is hidden
+      this.craftItems.forEach((item) => {
+        item.classList.remove('is-shown')
+      })
+
+      // When modal closes, instruct the accordion to refresh its dynamic content display.
+      // This ensures the correct .ayw-dynamic-read-me element is shown based on the
+      // accordion's current active tab.
+      if (
+        window.aywAccordion &&
+        typeof window.aywAccordion.updateDynamicElements === 'function'
+      ) {
+        let paneNumberToUpdate // Will hold the 'open-pane' attribute value
+
+        if (
+          typeof window.aywAccordion.activeIndex === 'number' &&
+          window.aywAccordion.items &&
+          window.aywAccordion.items.length > window.aywAccordion.activeIndex &&
+          window.aywAccordion.activeIndex >= 0 // Check for valid index
+        ) {
+          const activeAccordionItem =
+            window.aywAccordion.items[window.aywAccordion.activeIndex]
+          const paneElement = activeAccordionItem?.querySelector(
+            '.ayw-accordion-pane'
+          )
+          paneNumberToUpdate = paneElement?.getAttribute('open-pane')
+
+          if (!paneNumberToUpdate) {
+            console.warn(
+              'CraftUIManager: Active accordion item lacks an "open-pane" attribute. Accordion will use default display logic.'
+            )
+          }
+        } else {
+          console.warn(
+            'CraftUIManager: Could not determine active accordion pane (invalid activeIndex or items). Accordion will use default display logic.'
+          )
+          // paneNumberToUpdate remains undefined
+        }
+
+        // Call the accordion's method to update its display.
+        // The updateDynamicElements method in accordion.js is designed to handle
+        // an undefined paneNumber by defaulting (e.g., to tab 1).
+        window.aywAccordion.updateDynamicElements(paneNumberToUpdate)
+      } else {
+        console.warn(
+          'CraftUIManager: window.aywAccordion.updateDynamicElements not found. Cannot automatically refresh accordion state.'
+        )
+        // Fallback: If the accordion isn't available, and you strictly wanted to
+        // ensure .off is removed ONLY from .tab1 (as per your refined thought):
+        // this.dynamicReadMeElements.forEach(el => el.classList.remove('off'));
+        // However, this was likely leading to the "all three show up" issue.
+        // The preference is to let the accordion manage its state.
+      }
     }
 
     clearIconStates() {
@@ -320,6 +393,32 @@ function initAYWCraftUI() {
         .querySelector('.ayw-radiobutt.is-pressed input[name="craft"]')
         ?.closest('.ayw-radiobutt')
       return selectedButton?.getAttribute('data-button') || '1' // Default if none selected
+    }
+
+    // New method to handle clicks outside the modal
+    handleDocumentClickForModalClose(event) {
+      if (!this.modal || !this.modal.classList.contains('is-active')) {
+        // Modal doesn't exist or isn't active, so nothing to do.
+        return
+      }
+
+      // If the click is on or inside the modal, let other event handlers manage it.
+      // The existing listener on `this.modal` handles backdrop clicks.
+      if (this.modal.contains(event.target)) {
+        return
+      }
+
+      // If the click is on a grid icon, let its dedicated handler manage it.
+      // This prevents closing the modal if a grid icon (which controls the modal) is clicked.
+      for (const icon of this.gridIcons) {
+        if (icon === event.target || icon.contains(event.target)) {
+          return
+        }
+      }
+
+      // If none of the above conditions returned, the click was outside the modal
+      // and not on a grid icon. So, close the modal.
+      this.closeModal()
     }
   }
 

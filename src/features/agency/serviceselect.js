@@ -98,10 +98,15 @@ function initServiceSelect() {
           panelContent.classList.add('active') // Add active class
           console.log(` P${index} Content: Added .active`)
         }
-        // Make sure cover is inactive
+        // Make sure cover is inactive (hidden and unclickable)
         if (panelCover) {
-          panelCover.classList.remove('active') // Remove active class
-          console.log(` P${index} Cover: Removed .active`)
+          gsap.set(panelCover, {
+            opacity: 0,
+            pointerEvents: 'none',
+          })
+          console.log(
+            ` P${index} Cover: GSAP set opacity: 0, pointerEvents: none`
+          )
         }
       } else {
         // All other panels should be collapsed
@@ -125,10 +130,15 @@ function initServiceSelect() {
           panelContent.classList.remove('active') // Remove active class
           console.log(` P${index} Content: Removed .active`)
         }
-        // Make sure cover is active
+        // Make sure cover is active (visible and clickable)
         if (panelCover) {
-          panelCover.classList.add('active') // Add active class
-          console.log(` P${index} Cover: Added .active`)
+          gsap.set(panelCover, {
+            opacity: 1,
+            pointerEvents: 'auto',
+          })
+          console.log(
+            ` P${index} Cover: GSAP set opacity: 1, pointerEvents: auto`
+          )
         }
       }
     })
@@ -157,10 +167,8 @@ function initServiceSelect() {
       panelContent.classList.remove('active')
       console.log('💨 CollapsePanel Content: Removed .active')
     }
-    if (panelCover) {
-      panelCover.classList.add('active')
-      console.log('💨 CollapsePanel Cover: Added .active')
-    }
+    // Removed panelCover.classList.add('active'); - now handled by GSAP
+    // console.log('💨 CollapsePanel Cover: Added .active'); // Removed log
 
     console.log('💨 CollapsePanel: Creating GSAP timeline...')
     const timeline = gsap.timeline()
@@ -196,6 +204,22 @@ function initServiceSelect() {
         0
       )
     }
+
+    // Animate panel cover to fade in and enable pointer events
+    if (panelCover) {
+      timeline.to(
+        panelCover,
+        {
+          opacity: 1,
+          pointerEvents: 'auto',
+          duration: config.animationSpeed,
+          ease: config.easingType,
+        },
+        0 // Start at the beginning of the timeline
+      )
+      console.log('💨 CollapsePanel Cover: GSAP fade in initiated.')
+    }
+
     console.log('💨 CollapsePanel: GSAP fromTo timeline initiated.')
   }
 
@@ -212,6 +236,9 @@ function initServiceSelect() {
 
     const panelContent = panel.querySelector('.panel-content')
     const panelCover = panel.querySelector('.panel-cover')
+
+    // Removed panelCover.classList.remove('active'); - now handled by GSAP
+    // console.log('팽 ExpandPanel Cover: Removed .active'); // Removed log
 
     console.log('팽 ExpandPanel: Creating GSAP timeline...')
     const timeline = gsap.timeline({
@@ -246,10 +273,11 @@ function initServiceSelect() {
             panelContent.classList.add('active')
             console.log('팽 ExpandPanel Content: Added .active')
           }
-          if (panelCover) {
-            panelCover.classList.remove('active')
-            console.log('팽 ExpandPanel Cover: Removed .active')
-          }
+          // The panelCover class update is moved and handled by GSAP, so remove this block.
+          // if (panelCover) {
+          //   panelCover.classList.remove('active');
+          //   console.log('팽 ExpandPanel Cover: Removed .active');
+          // }
         },
       },
       0 // Start at time 0
@@ -271,6 +299,22 @@ function initServiceSelect() {
         config.animationSpeed / 7.5 // Adjusted delay based on speed
       )
     }
+
+    // Animate panel cover to fade out and disable pointer events
+    if (panelCover) {
+      timeline.to(
+        panelCover,
+        {
+          opacity: 0,
+          pointerEvents: 'none',
+          duration: config.animationSpeed,
+          ease: config.easingType,
+        },
+        0 // Start at the beginning of the timeline
+      )
+      console.log('팽 ExpandPanel Cover: GSAP fade out initiated.')
+    }
+
     console.log('팽 ExpandPanel: GSAP fromTo timeline initiated.')
   }
 }

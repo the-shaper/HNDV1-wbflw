@@ -24,7 +24,7 @@
     "mainOrbitColor": "#eaff36",
     "mainOrbitThickness": 44,
     "radarColor": "#91f8e7",
-    "radarThickness": 3,
+    "radarThickness": 6,
     "activeDeliveryDays": {
       "monday": false,
       "tuesday": true,

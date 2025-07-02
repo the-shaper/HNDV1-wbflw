@@ -1,0 +1,117 @@
+body {
+  margin: 0;
+  background-color: #edf7ee;
+  color: #ffffff;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+#info {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 250px;
+  max-height: 100vh;
+  box-sizing: border-box;
+  padding: 20px;
+  background: rgba(245, 245, 245, 0.95);
+  overflow-y: hidden;
+  font-size: 13px;
+  z-index: 150;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+/* Collapsed state for the info panel */
+#info.collapsed {
+  max-height: 70px;
+  padding: 10px;
+}
+#info.collapsed .panel-content {
+  max-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+#info.collapsed .panel-header {
+  margin-bottom: 0;
+}
+
+/* Rotate the collapse button for vertical collapse */
+#info.collapsed .collapse-button {
+  transform: rotate(180deg);
+}
+
+h1 {
+  margin-top: 0;
+  color: #333;
+}
+p {
+  color: #555;
+}
+canvas {
+  display: block;
+}
+.lil-gui {
+  --background-color: #f0f0f0;
+  --text-color: #333;
+  --title-background-color: #e0e0e0;
+  --widget-color: #e0e0e0;
+  --hover-color: #d0d0d0;
+}
+
+/* Panel title */
+.panel-title {
+  margin-top: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #333;
+}
+
+/* New: Panel Header styling */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* New: Collapse Button styling */
+.collapse-button {
+  background: none;
+  border: none;
+  color: #333;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.3s ease;
+  line-height: 1;
+  transform: rotate(0deg);
+}
+
+/* Buttons inside the left panel */
+#info .mode-controls button {
+  background-color: #4a90e2;
+  color: #ffffff;
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+#info .mode-controls button:hover {
+  background-color: #357abd;
+}
+
+/* Ensure the panel content has a smooth transition */
+.panel-content {
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}

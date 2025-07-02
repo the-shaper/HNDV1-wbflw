@@ -135,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
       import('./features/agency/ayw/energy/energy.js'), // For side effects
       import('./features/agency/ayw/energy/comms'), // Contains startWorkingHoursAnimation, stopWorkingHoursAnimation (named exports)
       import('./features/agency/ayw/energy/phoneLine.js'), // Import for side effects (self-initializing IIFE)
+      import('./features/agency/ayw/ayw-introModal.js'), // Import the new intro modal script
     ])
       .then(
         ([
@@ -143,6 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
           energyModule,
           commsModule,
           phoneLineModule, // phoneLineModule will be undefined or an empty object as it's an IIFE
+          introModalModule,
         ]) => {
           // Initialize AYW modules if exports are functions
           if (typeof aywModule.initAccordionAYW === 'function') {
@@ -186,6 +188,15 @@ document.addEventListener('DOMContentLoaded', () => {
           // stopWorkingHoursAnimation is now available via commsModule.stopWorkingHoursAnimation()
           // but is not called by default in this block.
 
+          // Initialize Intro Modal
+          if (typeof introModalModule.default === 'function') {
+            introModalModule.default()
+          } else {
+            console.error(
+              'Error: initIntroModal not exported as default function or is not a function in ./features/agency/ayw/ayw-introModal.js.'
+            )
+          }
+
           console.log('AYW and Energy modules initialized.')
         }
       )
@@ -194,6 +205,45 @@ document.addEventListener('DOMContentLoaded', () => {
       })
   } else {
     console.log('AYW page element not found. Skipping AYW module loading.')
+  }
+
+  /* ――――― Rive runtime on #rive-canvas ――――― */
+  const riveCanvas = document.getElementById('rive-canvas')
+  if (riveCanvas) {
+    import('./features/tf-home-v2/rive-runtime/script.js')
+      .then(({ default: initRiveCanvas }) => initRiveCanvas())
+      .catch((err) => console.error('Failed to load Rive runtime:', err))
+  } else {
+    console.log('No #rive-canvas found – skipping Rive runtime.')
+  }
+
+  // Check if the page has the data-page="home" attribute for TF Home UI
+  const isHomePage = document.querySelector('[data-page="home"]')
+
+  if (isHomePage) {
+    console.log('Home page detected. Dynamically importing TF Home UI module.')
+    import('./features/tf-home-v2/tf-home-ui.js')
+      .then((module) => {
+        if (typeof module.default === 'function') {
+          module.default() // Call initTfHomeUI
+        } else {
+          console.error(
+            'Error: initTfHomeUI not exported as default function or is not a function.'
+          )
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load the TF Home UI module:', error)
+      })
+
+    // Load Twilight Fringe background effect (auto-initialises via side-effects)
+    import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
+      console.error('Failed to load Twilight Fringe module:', error)
+    })
+  } else {
+    console.log(
+      'Home page element not found. Skipping TF Home UI module loading.'
+    )
   }
 })
 

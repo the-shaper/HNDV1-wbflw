@@ -127,22 +127,22 @@ body.initial-load .slider-bg_component {
 }
 
 .panel-cover {
-  opacity: 0;
+  /* opacity: 0; */ /* Removed - GSAP will manage */
   /* Define the transition for the opacity property */
   /* Match duration and easing with your GSAP animations if desired */
-  transition: opacity 0.44s ease-in-out;
+  /* transition: opacity 0.4s ease-in-out; */ /* Removed - GSAP will manage */
   /* Add pointer-events: none; if you don't want the invisible cover */
   /* to block clicks on the content below when the panel is expanded */
-  pointer-events: none;
+  /* pointer-events: none; */ /* Removed - GSAP will manage */
   /* Add any other necessary base styles (position, background, etc.) */
 }
 
 /* Active state (Panel Collapsed) */
-.panel-cover.active {
-  opacity: 1;
-  /* Restore pointer events when the cover is visible */
-  pointer-events: auto;
-}
+/* .panel-cover.active { */ /* Removed - GSAP will manage this state directly */
+/* opacity: 1; */
+/* Restore pointer events when the cover is visible */
+/* pointer-events: auto; */
+/* } */
 
 /* The parent container of the config button wrappers */
 .config-buttons-container {
@@ -179,7 +179,10 @@ body.initial-load .slider-bg_component {
   transition: background-color 0.3s ease; /* Optional: for smooth color transitions */
 }
 
-.ayw-accordion-pane-content.commitment {
+.ayw-accordion-pane-content.commitment,
+.ayw-craft-details,
+.ayw-read-me-wrapper {
+  backdrop-filter: blur(16px);
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
@@ -197,5 +200,36 @@ body.initial-load .slider-bg_component {
 }
 
 .scroll-line-project.commitment {
-  height: 55svh;
+  height: 6svh;
+}
+
+.tab-text {
+  pointer-events: none;
+}
+
+/* AYW Intro Modal */
+
+/* Base state: Hidden */
+
+/* Active state: Visible */
+.ayw-intro-modal.on {
+  opacity: 1;
+  visibility: visible;
+  /* Transition visibility immediately to visible */
+  transition: opacity 0.5s ease, visibility 0s ease 0s; /* visibility: visible doesn't need a delay */
+  pointer-events: auto; /* Allow clicks when visible */
+}
+
+/* When transitioning from .on to base state (.on is removed): */
+/* opacity transitions from 1 to 0 over 0.5s */
+/* visibility should transition from visible to hidden *after* the opacity transition */
+/* To achieve this with CSS transitions only: */
+
+/* Base state (when .on is removed) */
+.ayw-intro-modal {
+  opacity: 0;
+  /* Make visibility hidden *after* the opacity transition is complete */
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0s linear 0.5s; /* Delay visibility: hidden until opacity transition finishes */
+  pointer-events: none;
 }

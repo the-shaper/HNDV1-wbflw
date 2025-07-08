@@ -1,6 +1,6 @@
 import { Rive } from '@rive-app/webgl2' // WebGL 2 renderer
 // Build an absolute URL for the Rive binary; Vite will copy it to /dist
-const twilightRiv = new URL('./twilight_fringe_semi.riv', import.meta.url).href
+const twilightRiv = new URL('./twilight_fringe_3.riv', import.meta.url).href
 
 /**
  * Boot a Rive animation on the supplied canvas selector.

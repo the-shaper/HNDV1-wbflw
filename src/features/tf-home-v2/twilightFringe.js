@@ -9,6 +9,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 // Add logging prefix for easy identification
 const LOG_PREFIX = '[TwilightFringe]'
 
+// Clamp the renderer pixel ratio – global constant
+const MAX_PIXEL_RATIO = 1.5
+
 // Minimal fallback settings (only used if JSON loading fails completely)
 const fallbackSettings = {
   showGUI: false,
@@ -39,13 +42,14 @@ const fallbackSettings = {
   fresnelColor: '#ffffff',
   fresnelIntensity: 1.0,
   fresnelPower: 2.0,
-  liquidEnabled: true,
+  liquidEnabled: false, // DEFAULT OFF – we will enable it only if explicitly requested
   liquidAmount: 0.01,
   liquidSpeed: 0.3,
   liquidFrequency: 4.0,
   mouseEnabled: true,
   mouseRadius: 0.2,
   mouseIntensity: 0.05,
+  mouseFringeIntensity: 5.0, // New setting for interactive fringe strength
   imageVisible: true,
   imageSize: 2.0,
   meshVisible: true,
@@ -56,11 +60,38 @@ const fallbackSettings = {
   imagePositionX: 0.0,
   imagePositionY: 0.0,
 
+  // --- NEW: Main mesh transform defaults ---
+  meshScale: 1.0,
+  meshScaleX: 1.0,
+  meshScaleY: 1.0,
+  meshScaleZ: 1.0,
+  meshPositionX: 0.0,
+  meshPositionY: 0.0,
+  meshPositionZ: 0.0,
+
   // Settings for the new, optimized liquid effect
   optimizedLiquidEnabled: false,
   optimizedLiquidSpeed: 0.3,
   optimizedLiquidFrequency: 4.0,
   optimizedLiquidAmount: 0.05,
+
+  // Flow direction for optimized liquid
+  optimizedLiquidFlow: 'Static',
+
+  // --- Diffuse (blur + noise) layer defaults ---
+  diffuseEnabled: false,
+  diffuseBlur: 1.0, // blur intensity (pixel radius units)
+  diffuseNoise: 0.05, // legacy noise intensity (mapped to grainAmount)
+
+  // Grain (noise) new parameters
+  grainSize: 1.0, // size of grain in pixels
+  grainAmount: 0.05, // magnitude of grain displacement
+  grainOpacity: 1.0, // blending factor of grain effect
+
+  // Radial wave parameters for optimized liquid
+  radialWaveFrequency: 20.0,
+  radialWaveSpeed: 1.0,
+  radialWaveAmplitude: 0.04,
 }
 
 // Load settings from JSON with multiple path attempts
@@ -84,7 +115,10 @@ async function loadDefaultSettings() {
       const response = await fetch(path)
       if (response.ok) {
         const modes = await response.json()
-        const defaultSettings = { ...fallbackSettings, ...(modes.default || {}) };
+        const defaultSettings = {
+          ...fallbackSettings,
+          ...(modes.default || {}),
+        }
         console.log(`${LOG_PREFIX} Successfully loaded settings from: ${path}`)
         console.log(`${LOG_PREFIX} Loaded settings:`, defaultSettings)
         return defaultSettings
@@ -180,43 +214,90 @@ float snoise(vec3 v) {
     m = m * m;
     return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
 }
-`;
+`
 
 const OPTIMIZED_LIQUID_VERTEX_SHADER = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+const OPTIMIZED_LIQUID_FRAGMENT_SHADER = `
+  uniform sampler2D tDiffuse;
   uniform float uTime;
   uniform float uOptLiquidSpeed;
   uniform float uOptLiquidFrequency;
   uniform float uOptLiquidAmount;
+  uniform float uFringeAmount;
+  uniform vec2 uMouse;
+  uniform float uMouseEnabled;
+  uniform float uMouseRadius;
+  uniform float uMouseIntensity;
+  uniform float uMouseFringeIntensity; // New uniform for fringe strength
+  uniform int uMouseType;
+  uniform vec2 uFlowDirection;
+  uniform int uFlowMode; // 0 = linear, 1 = radial-drift, 2 = radial-wave
+  uniform float uWaveFreq;
+  uniform float uWaveSpeed;
+  uniform float uWaveAmp;
   varying vec2 vUv;
-  varying vec2 vDistortion;
 
-  // Re-using the noise chunk for the new shader
   ${NOISE_SHADER_CHUNK}
 
   void main() {
-    vUv = uv;
-
-    // Calculate distortion in the vertex shader
-    vec3 noisePos = vec3(uv * uOptLiquidFrequency, uTime * uOptLiquidSpeed);
+    // Ambient, animated distortion with flow offset (linear or radial)
+    float t = uTime * uOptLiquidSpeed * 0.1;
+    vec2 flowOffset;
+    if (uFlowMode == 0) {
+        flowOffset = uFlowDirection * t;
+    } else if (uFlowMode == 1) {
+        vec2 dir = normalize(vUv - vec2(0.5));
+        flowOffset = dir * t;
+    } else {
+        vec2 dir = normalize(vUv - vec2(0.5));
+        float r = length(vUv - vec2(0.5));
+        float wave = sin(r * uWaveFreq - uTime * uWaveSpeed) * uWaveAmp;
+        flowOffset = dir * wave;
+    }
+    vec3 noisePos = vec3((vUv + flowOffset) * uOptLiquidFrequency, uTime * uOptLiquidSpeed);
     float noiseX = snoise(noisePos);
     float noiseY = snoise(noisePos + vec3(15.7, 83.2, 45.9));
-    vDistortion = vec2(noiseX, noiseY) * uOptLiquidAmount;
+    vec2 ambientDistortion = vec2(noiseX, noiseY) * uOptLiquidAmount;
 
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    // Mouse-based distortion
+    vec2 mouseDistortion = vec2(0.0);
+    float dynamicFringe = uFringeAmount; // Start with the base fringe amount
+
+    if (uMouseEnabled > 0.5) {
+        float mouseDist = distance(vUv, uMouse);
+        float ripple = 1.0 - smoothstep(0.0, uMouseRadius, mouseDist);
+
+        // Make the fringe more intense based on the ripple and the new intensity uniform.
+        dynamicFringe += ripple * uMouseIntensity * uMouseFringeIntensity;
+
+        if (uMouseType == 0) { // Ripple / Push
+            vec2 direction = normalize(vUv - uMouse);
+            mouseDistortion = direction * ripple * uMouseIntensity;
+        } else { // Vortex / Swirl
+            vec2 direction = normalize(vUv - uMouse);
+            vec2 perpendicular = vec2(-direction.y, direction.x);
+            mouseDistortion = perpendicular * ripple * uMouseIntensity;
+        }
+    }
+
+    // Combine ambient and mouse distortions
+    vec2 totalDistortion = ambientDistortion + mouseDistortion;
+
+    // Apply the final distortion with the DYNAMIC fringe
+    float r = texture2D(tDiffuse, vUv + totalDistortion + vec2(dynamicFringe, 0.0)).r;
+    vec4 colorG = texture2D(tDiffuse, vUv + totalDistortion);
+    float b = texture2D(tDiffuse, vUv + totalDistortion - vec2(dynamicFringe, 0.0)).b;
+
+    gl_FragColor = vec4(r, colorG.g, b, colorG.a);
   }
-`;
-
-const OPTIMIZED_LIQUID_FRAGMENT_SHADER = `
-  uniform sampler2D uTexture;
-  varying vec2 vUv;
-  varying vec2 vDistortion;
-
-  void main() {
-    // Apply the distortion to the texture coordinates
-    vec2 distortedUv = vUv + vDistortion;
-    gl_FragColor = texture2D(uTexture, distortedUv);
-  }
-`;
+`
 
 const VERTEX_SHADER_SOURCE = `
 uniform float uTime;
@@ -313,6 +394,24 @@ export async function createTwilightFringe(containerEl, options = {}) {
     ...attributeSettings,
     ...options,
   }
+  // Backward compatibility: populate per-axis scale if missing
+  if (settings.meshScaleX === undefined)
+    settings.meshScaleX = settings.meshScale
+  if (settings.meshScaleY === undefined)
+    settings.meshScaleY = settings.meshScale
+  if (settings.meshScaleZ === undefined)
+    settings.meshScaleZ = settings.meshScale
+  // Backward compatibility: map legacy diffuseNoise to new grainAmount
+  if (
+    settings.grainAmount === undefined &&
+    settings.diffuseNoise !== undefined
+  ) {
+    settings.grainAmount = settings.diffuseNoise
+  }
+  // Ensure liquid & optimised passes are mutually exclusive by default
+  if (settings.optimizedLiquidEnabled && settings.liquidEnabled) {
+    settings.liquidEnabled = false
+  }
   console.log(`${LOG_PREFIX} Final settings:`, settings)
 
   // Performance tracking - separate for mesh and post-processing
@@ -334,7 +433,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
   console.log(`${LOG_PREFIX} Creating WebGL renderer...`)
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
 
   // Container styling with logging
   console.log(`${LOG_PREFIX} Setting up container styling...`)
@@ -371,31 +470,30 @@ export async function createTwilightFringe(containerEl, options = {}) {
   // The 'loadImage' function is now handled by the GUI controller below.
   if (settings.showGUI) {
     // This setup allows the GUI to trigger a file input dialog.
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/png';
-    fileInput.style.display = 'none';
-    document.body.appendChild(fileInput);
+    const fileInput = document.createElement('input')
+    fileInput.type = 'file'
+    fileInput.accept = 'image/png'
+    fileInput.style.display = 'none'
+    document.body.appendChild(fileInput)
 
     // The GUI's 'Load Image...' button will call this function.
-    settings.loadImage = () => fileInput.click();
+    settings.loadImage = () => fileInput.click()
 
     // When a file is selected, load it as the new texture.
     fileInput.addEventListener('change', (event) => {
       if (event.target.files && event.target.files[0]) {
-        const file = event.target.files[0];
-        const reader = new FileReader();
+        const file = event.target.files[0]
+        const reader = new FileReader()
         reader.onload = (e) => {
-          loadPngImage(e.target.result);
-        };
-        reader.readAsDataURL(file);
+          loadPngImage(e.target.result)
+        }
+        reader.readAsDataURL(file)
       }
-    });
-
+    })
   } else {
     settings.loadImage = () => {
-      console.log('Image loading is only available when showGUI is true.');
-    };
+      console.log('Image loading is only available when showGUI is true.')
+    }
   }
 
   const blendingOptions = {
@@ -412,7 +510,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   console.log(`${LOG_PREFIX} Creating geometry and material...`)
-  const geometry = new THREE.IcosahedronGeometry(1, 128)
+  const geometry = new THREE.IcosahedronGeometry(1, 64)
   const material = new THREE.ShaderMaterial({
     vertexShader: NOISE_SHADER_CHUNK + VERTEX_SHADER_SOURCE,
     fragmentShader: FRAGMENT_SHADER_SOURCE,
@@ -446,43 +544,23 @@ export async function createTwilightFringe(containerEl, options = {}) {
   })
 
   const mainMesh = new THREE.Mesh(geometry, material)
+  // Apply per-axis scale (values already defaulted above)
+  mainMesh.scale.set(
+    settings.meshScaleX,
+    settings.meshScaleY,
+    settings.meshScaleZ
+  )
+  mainMesh.position.set(
+    settings.meshPositionX,
+    settings.meshPositionY,
+    settings.meshPositionZ
+  )
   mainMesh.visible = settings.showMainEffect
   scene.add(mainMesh)
   console.log(
     `${LOG_PREFIX} Main mesh created and added to scene. Visible:`,
     settings.showMainEffect
   )
-
-  // --- Optimized Liquid Effect Plane ---
-  // Calculate the size of the plane so it perfectly fits the camera's view
-  const distance = camera.position.z - 1; // Place it slightly in front of the camera's far plane
-  const vFOV = THREE.MathUtils.degToRad(camera.fov); // Vertical FOV in radians
-  const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-  const planeWidth = planeHeight * camera.aspect;
-
-  let optimizedLiquidPlane = null;
-  const optimizedLiquidGeo = new THREE.PlaneGeometry(1, 1, 128, 128); // <-- FIX: Start with a 1x1 plane
-  const optimizedLiquidMat = new THREE.ShaderMaterial({
-    uniforms: {
-        uTime: { value: 0 },
-        uTexture: { value: null }, // Will be set later
-        uOptLiquidSpeed: { value: settings.optimizedLiquidSpeed },
-        uOptLiquidFrequency: { value: settings.optimizedLiquidFrequency },
-        uOptLiquidAmount: { value: settings.optimizedLiquidAmount },
-    },
-    vertexShader: OPTIMIZED_LIQUID_VERTEX_SHADER,
-    fragmentShader: OPTIMIZED_LIQUID_FRAGMENT_SHADER,
-    transparent: true, // <-- FIX: Enable transparency
-    depthTest: false, // <-- FIX: Prevent depth issues
-  });
-
-  optimizedLiquidPlane = new THREE.Mesh(optimizedLiquidGeo, optimizedLiquidMat);
-  optimizedLiquidPlane.position.z = 1; // Place it in front
-  optimizedLiquidPlane.scale.set(planeWidth, planeHeight, 1); // Scale it to fit the screen
-  optimizedLiquidPlane.renderOrder = 1; // Ensure it renders after the background
-  optimizedLiquidPlane.visible = settings.optimizedLiquidEnabled;
-  scene.add(optimizedLiquidPlane);
-  console.log(`${LOG_PREFIX} Optimized liquid plane created and added to scene.`);
 
   // PNG Image handling
   let imagePlane = null
@@ -533,26 +611,21 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
           if (imagePlane) {
             // Update existing plane
-            imagePlane.material.uniforms.map.value = texture;
+            imagePlane.material.uniforms.map.value = texture
             imagePlane.material.uniforms.brightness.value =
-              settings.imageBrightness;
-            imagePlane.material.uniforms.contrast.value = settings.imageContrast;
+              settings.imageBrightness
+            imagePlane.material.uniforms.contrast.value = settings.imageContrast
             imagePlane.position.set(
               settings.imagePositionX,
               settings.imagePositionY,
               1.5
-            );
+            )
             imagePlane.scale.set(
               settings.imageSize * imageAspectRatio,
               settings.imageSize,
               1
-            );
-            imagePlane.material.needsUpdate = true;
-
-            // Also update the optimized liquid plane's texture
-            optimizedLiquidMat.uniforms.uTexture.value = texture;
-            optimizedLiquidMat.needsUpdate = true; // Ensure shader updates
-
+            )
+            imagePlane.material.needsUpdate = true
           } else {
             // Create new plane
             const planeGeo = new THREE.PlaneGeometry(1, 1)
@@ -628,6 +701,52 @@ export async function createTwilightFringe(containerEl, options = {}) {
   const composer = new EffectComposer(renderer)
   composer.addPass(new RenderPass(scene, camera))
 
+  // ---------------- Diffuse (Blur + Noise) Pass ----------------
+  const DiffuseShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      uBlur: { value: settings.diffuseBlur },
+      uGrainSize: { value: settings.grainSize },
+      uGrainAmount: { value: settings.grainAmount },
+      uGrainOpacity: { value: settings.grainOpacity },
+      uResolution: {
+        value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+      },
+    },
+    vertexShader:
+      'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader:
+      `uniform sampler2D tDiffuse;\n` +
+      `uniform float uBlur;\n` +
+      `uniform float uGrainSize;\n` +
+      `uniform float uGrainAmount;\n` +
+      `uniform float uGrainOpacity;\n` +
+      `uniform vec2 uResolution;\n` +
+      `varying vec2 vUv;\n` +
+      `\n` +
+      `float random(in vec2 st) {\n` +
+      `    return fract(sin(dot(st.xy ,vec2(12.9898,78.233))) * 43758.5453);\n` +
+      `}\n` +
+      `\n` +
+      `void main(){\n` +
+      `    vec2 texel = 1.0 / uResolution;\n` +
+      `    float b = uBlur;\n` +
+      `    vec4 col = texture2D(tDiffuse, vUv) * 0.2;\n` +
+      `    col += texture2D(tDiffuse, vUv + vec2(texel.x * b, 0.0)) * 0.2;\n` +
+      `    col += texture2D(tDiffuse, vUv - vec2(texel.x * b, 0.0)) * 0.2;\n` +
+      `    col += texture2D(tDiffuse, vUv + vec2(0.0, texel.y * b)) * 0.2;\n` +
+      `    col += texture2D(tDiffuse, vUv - vec2(0.0, texel.y * b)) * 0.2;\n` +
+      `    vec2 grainCoord = floor(vUv * uResolution / uGrainSize);\n` +
+      `    float n = (random(grainCoord) - 0.5) * uGrainAmount;\n` +
+      `    col.rgb = mix(col.rgb, col.rgb + n, uGrainOpacity);\n` +
+      `    gl_FragColor = col;\n` +
+      `}`,
+  }
+
+  const diffusePass = new ShaderPass(DiffuseShader)
+  diffusePass.enabled = settings.diffuseEnabled
+  composer.addPass(diffusePass)
+
   const LiquidShader = {
     uniforms: {
       tDiffuse: { value: null },
@@ -644,7 +763,9 @@ export async function createTwilightFringe(containerEl, options = {}) {
     },
     vertexShader:
       'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: NOISE_SHADER_CHUNK + `
+    fragmentShader:
+      NOISE_SHADER_CHUNK +
+      `
             uniform sampler2D tDiffuse; uniform float uTime; uniform float uAmount;
             uniform float uSpeed; uniform float uFrequency; uniform vec2 uMouse;
             uniform float uMouseEnabled; uniform float uMouseRadius; uniform float uMouseIntensity;
@@ -673,6 +794,51 @@ export async function createTwilightFringe(containerEl, options = {}) {
   liquidPass.enabled = settings.liquidEnabled
   composer.addPass(liquidPass)
 
+  // --- New Optimized Liquid Pass ---
+  const OptimizedLiquidShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      uTime: { value: 0 },
+      uOptLiquidSpeed: { value: settings.optimizedLiquidSpeed },
+      uOptLiquidFrequency: { value: settings.optimizedLiquidFrequency },
+      uOptLiquidAmount: { value: settings.optimizedLiquidAmount },
+      uFringeAmount: { value: settings.optimizedLiquidFringeAmount },
+      uFlowDirection: {
+        value:
+          settings.optimizedLiquidFlow === 'Radial Drift' ||
+          settings.optimizedLiquidFlow === 'Radial Wave'
+            ? new THREE.Vector2(0, 0) // concentric modes
+            : flowDirections[settings.optimizedLiquidFlow] ||
+              new THREE.Vector2(0, 0),
+      },
+      // --- Mouse Interaction Uniforms ---
+      uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+      uMouseEnabled: { value: settings.mouseEnabled ? 1.0 : 0.0 },
+      uMouseRadius: { value: settings.mouseRadius },
+      uMouseIntensity: { value: settings.mouseIntensity },
+      uMouseFringeIntensity: { value: settings.mouseFringeIntensity }, // New Uniform
+      uMouseType: { value: 0 }, // 0 for Ripple, 1 for Vortex
+      uFlowMode: {
+        value:
+          settings.optimizedLiquidFlow === 'Radial Drift'
+            ? 1
+            : settings.optimizedLiquidFlow === 'Radial Wave'
+            ? 2
+            : 0,
+      },
+      // Radial wave uniforms
+      uWaveFreq: { value: settings.radialWaveFrequency },
+      uWaveSpeed: { value: settings.radialWaveSpeed },
+      uWaveAmp: { value: settings.radialWaveAmplitude },
+    },
+    vertexShader: OPTIMIZED_LIQUID_VERTEX_SHADER, // We will reuse the vertex shader
+    fragmentShader: OPTIMIZED_LIQUID_FRAGMENT_SHADER, // We will write a new fragment shader
+  }
+  const optimizedLiquidPass = new ShaderPass(OptimizedLiquidShader)
+  optimizedLiquidPass.enabled = settings.optimizedLiquidEnabled
+  composer.addPass(optimizedLiquidPass)
+  // --- End New Pass ---
+
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
     1.5,
@@ -698,11 +864,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
       .name('Show Main Effect (Mesh Only)')
       .onChange((v) => {
         mainMesh.visible = v
-        if (v) {
-          startMeshAnimation()
-        } else {
-          stopMeshAnimation()
-        }
+        updateAnimationState()
         console.log(
           `${LOG_PREFIX} Main effect (mesh) visibility changed to:`,
           v
@@ -730,9 +892,9 @@ export async function createTwilightFringe(containerEl, options = {}) {
     pngFolder.add(pngPathController, 'loadImage').name('Load PNG')
 
     const physicsFolder = gui.addFolder('Physics')
-    physicsFolder
-      .add(settings, 'speed', 0.1, 2.0, 0.01)
-      .onChange((v) => (material.uniforms.uSpeed.value = v))
+    physicsFolder.add(settings, 'speed', 0.1, 2.0, 0.01).onChange((v) => {
+      material.uniforms.uSpeed.value = v
+    })
     physicsFolder
       .add(settings, 'magnitude', 0.0, 1.0, 0.01)
       .onChange((v) => (material.uniforms.uMagnitude.value = v))
@@ -765,6 +927,56 @@ export async function createTwilightFringe(containerEl, options = {}) {
       .add(settings, 'wireframe')
       .onChange((v) => (material.wireframe = v))
 
+    // --- NEW: Mesh Transform Controls ---
+    const meshTransformFolder = appearanceFolder.addFolder('Mesh Transform')
+    const scaleFolder = meshTransformFolder.addFolder('Scale')
+    scaleFolder
+      .add(settings, 'meshScale', 0.1, 5.0, 0.01)
+      .name('uniform')
+      .onChange((v) => {
+        // Update all axes
+        settings.meshScaleX = settings.meshScaleY = settings.meshScaleZ = v
+        mainMesh.scale.set(v, v, v)
+      })
+    scaleFolder
+      .add(settings, 'meshScaleX', 0.1, 5.0, 0.01)
+      .name('scale X')
+      .onChange((v) => {
+        mainMesh.scale.x = v
+      })
+    scaleFolder
+      .add(settings, 'meshScaleY', 0.1, 5.0, 0.01)
+      .name('scale Y')
+      .onChange((v) => {
+        mainMesh.scale.y = v
+      })
+    scaleFolder
+      .add(settings, 'meshScaleZ', 0.1, 5.0, 0.01)
+      .name('scale Z')
+      .onChange((v) => {
+        mainMesh.scale.z = v
+      })
+
+    const meshPositionFolder = meshTransformFolder.addFolder('Position')
+    meshPositionFolder
+      .add(settings, 'meshPositionX', -5.0, 5.0, 0.01)
+      .name('x')
+      .onChange((v) => {
+        mainMesh.position.x = v
+      })
+    meshPositionFolder
+      .add(settings, 'meshPositionY', -5.0, 5.0, 0.01)
+      .name('y')
+      .onChange((v) => {
+        mainMesh.position.y = v
+      })
+    meshPositionFolder
+      .add(settings, 'meshPositionZ', -5.0, 5.0, 0.01)
+      .name('z')
+      .onChange((v) => {
+        mainMesh.position.z = v
+      })
+
     const colorFolder = appearanceFolder.addFolder('Colors')
     colorFolder
       .addColor(settings, 'edgeColor')
@@ -786,6 +998,40 @@ export async function createTwilightFringe(containerEl, options = {}) {
     opacityFolder
       .add(settings, 'alphaPower', 0.1, 10.0, 0.1)
       .onChange((v) => (material.uniforms.uAlphaPower.value = v))
+
+    // --- Diffuse Layer GUI ---
+    const diffuseFolder = appearanceFolder.addFolder('Diffuse Softening')
+    diffuseFolder
+      .add(settings, 'diffuseEnabled')
+      .name('enabled')
+      .onChange((v) => {
+        diffusePass.enabled = v
+        updateAnimationState()
+      })
+    diffuseFolder
+      .add(settings, 'diffuseBlur', 0.0, 5.0, 0.1)
+      .name('blur')
+      .onChange((v) => {
+        diffusePass.uniforms.uBlur.value = v
+      })
+    diffuseFolder
+      .add(settings, 'grainSize', 1.0, 20.0, 1.0)
+      .name('grain size')
+      .onChange((v) => {
+        diffusePass.uniforms.uGrainSize.value = v
+      })
+    diffuseFolder
+      .add(settings, 'grainAmount', 0.0, 0.2, 0.005)
+      .name('grain amount')
+      .onChange((v) => {
+        diffusePass.uniforms.uGrainAmount.value = v
+      })
+    diffuseFolder
+      .add(settings, 'grainOpacity', 0.0, 1.0, 0.01)
+      .name('grain opacity')
+      .onChange((v) => {
+        diffusePass.uniforms.uGrainOpacity.value = v
+      })
 
     const fresnelFolder = gui.addFolder('Mesh Glow (Fresnel)')
     fresnelFolder
@@ -811,7 +1057,15 @@ export async function createTwilightFringe(containerEl, options = {}) {
     liquidFolder
       .add(settings, 'liquidEnabled')
       .name('enabled')
-      .onChange((v) => (liquidPass.enabled = v))
+      .onChange((v) => {
+        liquidPass.enabled = v
+        // If fragment liquid is enabled, ensure optimised one is off
+        if (v) {
+          optimizedLiquidPass.enabled = false
+          settings.optimizedLiquidEnabled = false
+        }
+        updateAnimationState()
+      })
     liquidFolder
       .add(settings, 'liquidFlow', ['Static', 'Up', 'Down', 'Left', 'Right'])
       .name('flow direction')
@@ -852,9 +1106,10 @@ export async function createTwilightFringe(containerEl, options = {}) {
       .onChange((v) => (liquidPass.uniforms.uMouseIntensity.value = v))
 
     const bloomFolder = gui.addFolder('Scene Glow (Bloom)')
-    bloomFolder
-      .add(settings, 'glowEnabled')
-      .onChange((v) => (bloomPass.enabled = v))
+    bloomFolder.add(settings, 'glowEnabled').onChange((v) => {
+      bloomPass.enabled = v
+      updateAnimationState()
+    })
     bloomFolder
       .add(settings, 'glowThreshold', 0.0, 1.0, 0.01)
       .onChange((v) => (bloomPass.threshold = v))
@@ -866,24 +1121,154 @@ export async function createTwilightFringe(containerEl, options = {}) {
       .onChange((v) => (bloomPass.radius = v))
 
     // --- Optimized Liquid Effect GUI ---
-    const optLiquidFolder = gui.addFolder('Optimized Liquid Effect (Vertex)');
-    optLiquidFolder.add(settings, 'optimizedLiquidEnabled').name('enabled').onChange(v => {
-        optimizedLiquidPlane.visible = v;
-        // When enabling the optimized effect, disable the old ones to prevent overlap
+    const optLiquidFolder = gui.addFolder('Optimized Liquid Effect (Vertex)')
+    optLiquidFolder
+      .add(settings, 'optimizedLiquidEnabled')
+      .name('enabled')
+      .onChange((v) => {
+        optimizedLiquidPass.enabled = v
+        // Mutual exclusion with fragment liquid
         if (v) {
-            liquidPass.enabled = false;
-            if(imagePlane) imagePlane.visible = false;
-            // Also update the GUI to reflect the change
-            liquidFolder.controllers.find(c => c.property === 'liquidEnabled').setValue(false);
-            if(imageFolder) imageFolder.controllers.find(c => c.property === 'imageVisible').setValue(false);
+          liquidPass.enabled = false
+          settings.liquidEnabled = false
         }
-    });
-    optLiquidFolder.add(settings, 'optimizedLiquidSpeed', 0, 2, 0.01).name('speed').onChange(v => optimizedLiquidMat.uniforms.uOptLiquidSpeed.value = v);
-    optLiquidFolder.add(settings, 'optimizedLiquidFrequency', 0, 20, 0.1).name('frequency').onChange(v => optimizedLiquidMat.uniforms.uOptLiquidFrequency.value = v);
-    optLiquidFolder.add(settings, 'optimizedLiquidAmount', 0, 0.2, 0.001).name('amount').onChange(v => optimizedLiquidMat.uniforms.uOptLiquidAmount.value = v);
+        updateAnimationState()
+      })
+    optLiquidFolder
+      .add(settings, 'optimizedLiquidFlow', [
+        'Static',
+        'Up',
+        'Down',
+        'Left',
+        'Right',
+        'Radial Drift',
+        'Radial Wave',
+      ])
+      .name('flow direction')
+      .onChange((v) => {
+        if (v === 'Radial Wave') {
+          optimizedLiquidPass.uniforms.uFlowMode.value = 2
+          optimizedLiquidPass.uniforms.uFlowDirection.value.set(0, 0)
+        } else if (v === 'Radial Drift' || v === 'Radial') {
+          optimizedLiquidPass.uniforms.uFlowMode.value = 1
+          optimizedLiquidPass.uniforms.uFlowDirection.value.set(0, 0)
+        } else {
+          optimizedLiquidPass.uniforms.uFlowMode.value = 0
+          optimizedLiquidPass.uniforms.uFlowDirection.value.copy(
+            flowDirections[v]
+          )
+        }
+      })
+    optLiquidFolder
+      .add(settings, 'optimizedLiquidSpeed', 0, 2, 0.01)
+      .name('speed')
+      .onChange((v) => (optimizedLiquidPass.uniforms.uOptLiquidSpeed.value = v))
+    optLiquidFolder
+      .add(settings, 'optimizedLiquidFrequency', 0, 20, 0.1)
+      .name('frequency')
+      .onChange(
+        (v) => (optimizedLiquidPass.uniforms.uOptLiquidFrequency.value = v)
+      )
+    optLiquidFolder
+      .add(settings, 'optimizedLiquidAmount', 0, 0.2, 0.001)
+      .name('amount')
+      .onChange(
+        (v) => (optimizedLiquidPass.uniforms.uOptLiquidAmount.value = v)
+      )
+    optLiquidFolder
+      .add(settings, 'optimizedLiquidFringeAmount', 0, 0.05, 0.001)
+      .name('fringe')
+      .onChange((v) => (optimizedLiquidPass.uniforms.uFringeAmount.value = v))
 
+    // --- Mouse Interaction GUI for Optimized Pass ---
+    const optMouseFolder = optLiquidFolder.addFolder('Mouse Interaction')
+    const mouseTypes = { 'Ripple / Push': 0, 'Vortex / Swirl': 1 }
+    const mouseSettings = { type: 0 } // Local object to control the dropdown
 
-    gui.add(settings, 'loadImage').name('Load Image...')
+    optMouseFolder
+      .add(settings, 'mouseEnabled')
+      .name('enabled')
+      .onChange((v) => {
+        optimizedLiquidPass.uniforms.uMouseEnabled.value = v ? 1.0 : 0.0
+      })
+
+    optMouseFolder
+      .add(mouseSettings, 'type', mouseTypes)
+      .name('type')
+      .onChange((v) => {
+        optimizedLiquidPass.uniforms.uMouseType.value = parseInt(v)
+      })
+
+    optMouseFolder
+      .add(settings, 'mouseRadius', 0.01, 1.0, 0.01)
+      .name('radius')
+      .onChange((v) => {
+        optimizedLiquidPass.uniforms.uMouseRadius.value = v
+      })
+
+    optMouseFolder
+      .add(settings, 'mouseIntensity', 0.0, 0.2, 0.001)
+      .name('intensity')
+      .onChange((v) => {
+        optimizedLiquidPass.uniforms.uMouseIntensity.value = v
+      })
+
+    optMouseFolder
+      .add(settings, 'mouseFringeIntensity', 0.0, 20.0, 0.1)
+      .name('fringe intensity')
+      .onChange((v) => {
+        optimizedLiquidPass.uniforms.uMouseFringeIntensity.value = v
+      })
+
+    // --- Export / Save Current Settings ---
+    const exportFolder = gui.addFolder('Save / Export Settings')
+
+    // Helper to get a serializable clone wrapped under "default" key
+    const getSerializableSettings = () => {
+      const inner = {}
+      for (const [k, v] of Object.entries(settings)) {
+        if (typeof v !== 'function') inner[k] = v
+      }
+      return { default: inner }
+    }
+
+    const exportActions = {
+      copyJSON: () => {
+        const json = JSON.stringify(getSerializableSettings(), null, 2)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard
+            .writeText(json)
+            .then(() =>
+              console.log(`${LOG_PREFIX} Settings copied to clipboard`)
+            )
+            .catch((err) => {
+              console.error(`${LOG_PREFIX} Clipboard copy failed`, err)
+              alert('Could not copy to clipboard')
+            })
+        } else {
+          // Fallback: open prompt
+          window.prompt('Copy JSON below', json)
+        }
+      },
+      downloadJSON: () => {
+        const json = JSON.stringify(getSerializableSettings(), null, 2)
+        const blob = new Blob([json], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'twilightSettings.json'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        console.log(
+          `${LOG_PREFIX} Settings downloaded as twilightSettings.json`
+        )
+      },
+    }
+
+    exportFolder.add(exportActions, 'copyJSON').name('Copy JSON to Clipboard')
+    exportFolder.add(exportActions, 'downloadJSON').name('Download JSON File')
 
     if (imagePlane) {
       createImageGUI()
@@ -891,57 +1276,92 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   function createImageGUI() {
-    if (imageFolder || !gui) return; // Exit if GUI is not ready or folder already exists
+    if (imageFolder || !gui) return // Exit if GUI is not ready or folder already exists
 
-    imageFolder = gui.addFolder('Image Overlay');
+    imageFolder = gui.addFolder('Image Overlay')
 
     // This check is now sufficient because this function is only called *after* imagePlane is created.
     if (!imagePlane) {
-        console.warn(`${LOG_PREFIX} createImageGUI called before imagePlane was created. No GUI will be shown.`);
-        return;
+      console.warn(
+        `${LOG_PREFIX} createImageGUI called before imagePlane was created. No GUI will be shown.`
+      )
+      return
     }
 
     imageFolder
       .add(settings, 'imageVisible')
       .name('visible')
-      .onChange((v) => (imagePlane.visible = v));
+      .onChange((v) => (imagePlane.visible = v))
 
     imageFolder
       .add(settings, 'imageSize', 0.1, 5.0, 0.01)
       .name('size')
       .onChange((v) => {
-        imagePlane.scale.set(v * imageAspectRatio, v, 1);
-      });
+        imagePlane.scale.set(v * imageAspectRatio, v, 1)
+      })
 
     imageFolder
       .add(settings, 'imageBrightness', 0.0, 3.0, 0.01)
       .name('brightness')
       .onChange((v) => {
-        imagePlane.material.uniforms.brightness.value = v;
-      });
+        imagePlane.material.uniforms.brightness.value = v
+      })
 
     imageFolder
       .add(settings, 'imageContrast', 0.0, 3.0, 0.01)
       .name('contrast')
       .onChange((v) => {
-        imagePlane.material.uniforms.contrast.value = v;
-      });
+        imagePlane.material.uniforms.contrast.value = v
+      })
 
-    const positionFolder = imageFolder.addFolder('Position');
+    const positionFolder = imageFolder.addFolder('Position')
     positionFolder
       .add(settings, 'imagePositionX', -2.0, 2.0, 0.01)
       .name('x')
       .onChange((v) => {
-        imagePlane.position.x = v;
-      });
+        imagePlane.position.x = v
+      })
 
     positionFolder
       .add(settings, 'imagePositionY', -2.0, 2.0, 0.01)
       .name('y')
       .onChange((v) => {
-        imagePlane.position.y = v;
-      });
+        imagePlane.position.y = v
+      })
   }
+
+  // ---------------- Helper functions to control animation state ----------------
+  function shouldRunMesh() {
+    return settings.showMainEffect || settings.optimizedLiquidEnabled
+  }
+  function shouldRunPost() {
+    // Post-processing (which performs the final render via EffectComposer) must keep
+    // running not only when screen-space effects are enabled, but also whenever the
+    // main mesh itself is animating. Otherwise the scene stops refreshing when the
+    // user toggles those effects off. We therefore include `settings.showMainEffect`
+    // in the condition.
+    return (
+      liquidPass.enabled ||
+      optimizedLiquidPass.enabled ||
+      bloomPass.enabled ||
+      diffusePass.enabled ||
+      settings.showMainEffect
+    )
+  }
+  function updateAnimationState() {
+    if (shouldRunMesh()) {
+      startMeshAnimation()
+    } else {
+      stopMeshAnimation()
+    }
+
+    if (shouldRunPost()) {
+      startPostProcessingAnimation()
+    } else {
+      stopPostProcessingAnimation()
+    }
+  }
+  // ---------------------------------------------------------------------------
 
   // Separate animation controls for mesh and post-processing
   function startMeshAnimation() {
@@ -964,8 +1384,8 @@ export async function createTwilightFringe(containerEl, options = {}) {
       }
 
       // Also update the optimized liquid plane's time uniform
-      if (settings.optimizedLiquidEnabled && optimizedLiquidPlane.visible) {
-        optimizedLiquidMat.uniforms.uTime.value = elapsedTime;
+      if (settings.optimizedLiquidEnabled && optimizedLiquidPass.enabled) {
+        optimizedLiquidPass.uniforms.uTime.value = elapsedTime
       }
     }
 
@@ -973,14 +1393,25 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   function stopMeshAnimation() {
-    if (!isMeshAnimating) return
-
-    isMeshAnimating = false
-    if (meshAnimationId) {
-      cancelAnimationFrame(meshAnimationId)
-      meshAnimationId = null
+    // Only stop the animation if no effects that use it are active.
+    if (
+      isMeshAnimating &&
+      !settings.showMainEffect &&
+      !settings.optimizedLiquidEnabled
+    ) {
+      isMeshAnimating = false
+      if (meshAnimationId) {
+        cancelAnimationFrame(meshAnimationId)
+        meshAnimationId = null
+      }
+      console.log(
+        `${LOG_PREFIX} Mesh animation stopped because all dependent effects are off.`
+      )
+    } else {
+      console.log(
+        `${LOG_PREFIX} Request to stop mesh animation ignored, an effect is still active.`
+      )
     }
-    console.log(`${LOG_PREFIX} Mesh animation stopped`)
   }
 
   function startPostProcessingAnimation() {
@@ -1041,10 +1472,12 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
   console.log(`${LOG_PREFIX} Setting up mouse event listener...`)
   window.addEventListener('mousemove', (event) => {
-    liquidPass.uniforms.uMouse.value.set(
-      event.clientX / window.innerWidth,
-      1.0 - event.clientY / window.innerHeight
-    )
+    const mousePos = {
+      x: event.clientX / window.innerWidth,
+      y: 1.0 - event.clientY / window.innerHeight,
+    }
+    liquidPass.uniforms.uMouse.value.set(mousePos.x, mousePos.y)
+    optimizedLiquidPass.uniforms.uMouse.value.set(mousePos.x, mousePos.y)
   })
 
   // Always start post-processing animation (for liquid effects, bloom, etc.)
@@ -1071,17 +1504,37 @@ export async function createTwilightFringe(containerEl, options = {}) {
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
     composer.setSize(window.innerWidth, window.innerHeight)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
+
+    // Update diffuse resolution uniform
+    diffusePass.uniforms.uResolution.value.set(
+      window.innerWidth,
+      window.innerHeight
+    )
 
     // Also resize the optimized liquid plane to fit the new aspect ratio
     if (optimizedLiquidPlane) {
-        const distance = camera.position.z - 1;
-        const vFOV = THREE.MathUtils.degToRad(camera.fov);
-        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-        const planeWidth = planeHeight * camera.aspect;
-        optimizedLiquidPlane.scale.set(planeWidth, planeHeight, 1);
+      const distance = camera.position.z - 1
+      const vFOV = THREE.MathUtils.degToRad(camera.fov)
+      const planeHeight = 2 * Math.tan(vFOV / 2) * distance
+      const planeWidth = planeHeight * camera.aspect
+      optimizedLiquidPlane.scale.set(planeWidth, planeHeight, 1)
     }
   })
+
+  // ---------------- Tab visibility pause/resume ----------------
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopMeshAnimation()
+      stopPostProcessingAnimation()
+    } else {
+      updateAnimationState()
+    }
+  })
+  // ---------------------------------------------------------------------------
+
+  // Initialize animation state based on initial settings
+  updateAnimationState()
 
   console.log(`${LOG_PREFIX} TwilightFringe instance created successfully!`)
 
@@ -1099,12 +1552,101 @@ export async function createTwilightFringe(containerEl, options = {}) {
     stopMeshAnimation,
     updateSettings: (newSettings) => {
       Object.assign(settings, newSettings)
+
+      // Apply mesh transform updates if provided
+      if (
+        'meshScale' in newSettings &&
+        typeof settings.meshScale === 'number'
+      ) {
+        settings.meshScaleX =
+          settings.meshScaleY =
+          settings.meshScaleZ =
+            settings.meshScale
+      }
+
+      if (
+        typeof settings.meshScaleX === 'number' &&
+        typeof settings.meshScaleY === 'number' &&
+        typeof settings.meshScaleZ === 'number'
+      ) {
+        mainMesh.scale.set(
+          settings.meshScaleX,
+          settings.meshScaleY,
+          settings.meshScaleZ
+        )
+      }
+
+      if (
+        typeof settings.meshPositionX === 'number' &&
+        typeof settings.meshPositionY === 'number' &&
+        typeof settings.meshPositionZ === 'number'
+      ) {
+        mainMesh.position.set(
+          settings.meshPositionX,
+          settings.meshPositionY,
+          settings.meshPositionZ
+        )
+      }
+
+      // Apply diffuse settings if provided
+      if (typeof settings.diffuseEnabled === 'boolean') {
+        diffusePass.enabled = settings.diffuseEnabled
+      }
+      if (typeof settings.diffuseBlur === 'number') {
+        diffusePass.uniforms.uBlur.value = settings.diffuseBlur
+      }
+      // Grain parameters
+      if (typeof settings.grainSize === 'number') {
+        diffusePass.uniforms.uGrainSize.value = settings.grainSize
+      }
+      if (typeof settings.grainAmount === 'number') {
+        diffusePass.uniforms.uGrainAmount.value = settings.grainAmount
+      }
+      if (typeof settings.grainOpacity === 'number') {
+        diffusePass.uniforms.uGrainOpacity.value = settings.grainOpacity
+      }
+
       if (settings.showMainEffect) {
         mainMesh.visible = true
         startMeshAnimation()
       } else {
         mainMesh.visible = false
         stopMeshAnimation()
+      }
+
+      // Legacy support: if caller provides diffuseNoise, map to grainAmount
+      if (
+        settings.grainAmount === undefined &&
+        typeof settings.diffuseNoise === 'number'
+      ) {
+        settings.grainAmount = settings.diffuseNoise
+      }
+
+      // Optimized liquid flow update
+      if (typeof settings.optimizedLiquidFlow === 'string') {
+        if (settings.optimizedLiquidFlow === 'Radial') {
+          optimizedLiquidPass.uniforms.uFlowMode.value = 1
+          optimizedLiquidPass.uniforms.uFlowDirection.value.set(0, 0)
+        } else {
+          optimizedLiquidPass.uniforms.uFlowMode.value = 0
+          optimizedLiquidPass.uniforms.uFlowDirection.value.copy(
+            flowDirections[settings.optimizedLiquidFlow] ||
+              flowDirections['Static']
+          )
+        }
+      }
+
+      // Radial wave params updates
+      if (typeof settings.radialWaveFrequency === 'number') {
+        optimizedLiquidPass.uniforms.uWaveFreq.value =
+          settings.radialWaveFrequency
+      }
+      if (typeof settings.radialWaveSpeed === 'number') {
+        optimizedLiquidPass.uniforms.uWaveSpeed.value = settings.radialWaveSpeed
+      }
+      if (typeof settings.radialWaveAmplitude === 'number') {
+        optimizedLiquidPass.uniforms.uWaveAmp.value =
+          settings.radialWaveAmplitude
       }
     },
   }
@@ -1160,8 +1702,7 @@ async function initializeTwilightFringe() {
 
 // Standard practice to initialize after DOM is ready, preventing double-execution.
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeTwilightFringe);
 } else {
   // DOMContentLoaded has already fired
-  initializeTwilightFringe();
+  initializeTwilightFringe()
 }

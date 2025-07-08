@@ -46,6 +46,7 @@ const fallbackSettings = {
   mouseEnabled: true,
   mouseRadius: 0.2,
   mouseIntensity: 0.05,
+  mouseFringeIntensity: 5.0, // New setting for interactive fringe strength
   imageVisible: true,
   imageSize: 2.0,
   meshVisible: true,
@@ -55,6 +56,12 @@ const fallbackSettings = {
   imageContrast: 1.0,
   imagePositionX: 0.0,
   imagePositionY: 0.0,
+
+  // Settings for the new, optimized liquid effect
+  optimizedLiquidEnabled: false,
+  optimizedLiquidSpeed: 0.3,
+  optimizedLiquidFrequency: 4.0,
+  optimizedLiquidAmount: 0.05,
 }
 
 // Load settings from JSON with multiple path attempts
@@ -78,7 +85,7 @@ async function loadDefaultSettings() {
       const response = await fetch(path)
       if (response.ok) {
         const modes = await response.json()
-        const defaultSettings = modes.default || fallbackSettings
+        const defaultSettings = { ...fallbackSettings, ...(modes.default || {}) };
         console.log(`${LOG_PREFIX} Successfully loaded settings from: ${path}`)
         console.log(`${LOG_PREFIX} Loaded settings:`, defaultSettings)
         return defaultSettings
@@ -125,16 +132,7 @@ function readSettingsFromDOM(containerEl) {
 }
 
 // --- GLSL Shaders (inlined so no HTML <script> tags are needed) ---
-const VERTEX_SHADER_SOURCE = `
-uniform float uTime;
-uniform float uSpeed;
-uniform float uMagnitude;
-uniform float uLacunarity;
-uniform float uGain;
-uniform vec3 uNoiseScale;
-varying float vNoise;
-varying float vFresnel;
-
+const NOISE_SHADER_CHUNK = `
 // Perlin Noise (unchanged)
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -183,6 +181,82 @@ float snoise(vec3 v) {
     m = m * m;
     return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
 }
+`;
+
+const OPTIMIZED_LIQUID_VERTEX_SHADER = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const OPTIMIZED_LIQUID_FRAGMENT_SHADER = `
+  uniform sampler2D tDiffuse;
+  uniform float uTime;
+  uniform float uOptLiquidSpeed;
+  uniform float uOptLiquidFrequency;
+  uniform float uOptLiquidAmount;
+  uniform float uFringeAmount;
+  uniform vec2 uMouse;
+  uniform float uMouseEnabled;
+  uniform float uMouseRadius;
+  uniform float uMouseIntensity;
+  uniform float uMouseFringeIntensity; // New uniform for fringe strength
+  uniform int uMouseType;
+  varying vec2 vUv;
+
+  ${NOISE_SHADER_CHUNK}
+
+  void main() {
+    // Ambient, animated distortion (the base liquid effect)
+    vec3 noisePos = vec3(vUv * uOptLiquidFrequency, uTime * uOptLiquidSpeed);
+    float noiseX = snoise(noisePos);
+    float noiseY = snoise(noisePos + vec3(15.7, 83.2, 45.9));
+    vec2 ambientDistortion = vec2(noiseX, noiseY) * uOptLiquidAmount;
+
+    // Mouse-based distortion
+    vec2 mouseDistortion = vec2(0.0);
+    float dynamicFringe = uFringeAmount; // Start with the base fringe amount
+
+    if (uMouseEnabled > 0.5) {
+        float mouseDist = distance(vUv, uMouse);
+        float ripple = 1.0 - smoothstep(0.0, uMouseRadius, mouseDist);
+
+        // Make the fringe more intense based on the ripple and the new intensity uniform.
+        dynamicFringe += ripple * uMouseIntensity * uMouseFringeIntensity;
+
+        if (uMouseType == 0) { // Ripple / Push
+            vec2 direction = normalize(vUv - uMouse);
+            mouseDistortion = direction * ripple * uMouseIntensity;
+        } else { // Vortex / Swirl
+            vec2 direction = normalize(vUv - uMouse);
+            vec2 perpendicular = vec2(-direction.y, direction.x);
+            mouseDistortion = perpendicular * ripple * uMouseIntensity;
+        }
+    }
+
+    // Combine ambient and mouse distortions
+    vec2 totalDistortion = ambientDistortion + mouseDistortion;
+
+    // Apply the final distortion with the DYNAMIC fringe
+    float r = texture2D(tDiffuse, vUv + totalDistortion + vec2(dynamicFringe, 0.0)).r;
+    vec4 colorG = texture2D(tDiffuse, vUv + totalDistortion);
+    float b = texture2D(tDiffuse, vUv + totalDistortion - vec2(dynamicFringe, 0.0)).b;
+
+    gl_FragColor = vec4(r, colorG.g, b, colorG.a);
+  }
+`;
+
+const VERTEX_SHADER_SOURCE = `
+uniform float uTime;
+uniform float uSpeed;
+uniform float uMagnitude;
+uniform float uLacunarity;
+uniform float uGain;
+uniform vec3 uNoiseScale;
+varying float vNoise;
+varying float vFresnel;
 
 float fbm(vec3 p) {
     float total = 0.0;
@@ -324,18 +398,34 @@ export async function createTwilightFringe(containerEl, options = {}) {
     }
   )
 
-  let fileInput = null
+  // The 'loadImage' function is now handled by the GUI controller below.
   if (settings.showGUI) {
-    fileInput = document.createElement('input')
-    fileInput.type = 'file'
-    fileInput.accept = 'image/png'
-    fileInput.style.display = 'none'
-    document.body.appendChild(fileInput)
-    settings.loadImage = () => fileInput.click()
+    // This setup allows the GUI to trigger a file input dialog.
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/png';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+
+    // The GUI's 'Load Image...' button will call this function.
+    settings.loadImage = () => fileInput.click();
+
+    // When a file is selected, load it as the new texture.
+    fileInput.addEventListener('change', (event) => {
+      if (event.target.files && event.target.files[0]) {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          loadPngImage(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
   } else {
     settings.loadImage = () => {
-      console.log('Image loading is only available when showGUI is true.')
-    }
+      console.log('Image loading is only available when showGUI is true.');
+    };
   }
 
   const blendingOptions = {
@@ -354,7 +444,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
   console.log(`${LOG_PREFIX} Creating geometry and material...`)
   const geometry = new THREE.IcosahedronGeometry(1, 128)
   const material = new THREE.ShaderMaterial({
-    vertexShader: VERTEX_SHADER_SOURCE,
+    vertexShader: NOISE_SHADER_CHUNK + VERTEX_SHADER_SOURCE,
     fragmentShader: FRAGMENT_SHADER_SOURCE,
     uniforms: {
       uTime: { value: 0 },
@@ -392,6 +482,8 @@ export async function createTwilightFringe(containerEl, options = {}) {
     `${LOG_PREFIX} Main mesh created and added to scene. Visible:`,
     settings.showMainEffect
   )
+
+  
 
   // PNG Image handling
   let imagePlane = null
@@ -442,21 +534,22 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
           if (imagePlane) {
             // Update existing plane
-            imagePlane.material.uniforms.map.value = texture
+            imagePlane.material.uniforms.map.value = texture;
             imagePlane.material.uniforms.brightness.value =
-              settings.imageBrightness
-            imagePlane.material.uniforms.contrast.value = settings.imageContrast
+              settings.imageBrightness;
+            imagePlane.material.uniforms.contrast.value = settings.imageContrast;
             imagePlane.position.set(
               settings.imagePositionX,
               settings.imagePositionY,
               1.5
-            )
+            );
             imagePlane.scale.set(
               settings.imageSize * imageAspectRatio,
               settings.imageSize,
               1
-            )
-            imagePlane.material.needsUpdate = true
+            );
+            imagePlane.material.needsUpdate = true;
+
           } else {
             // Create new plane
             const planeGeo = new THREE.PlaneGeometry(1, 1)
@@ -548,35 +641,11 @@ export async function createTwilightFringe(containerEl, options = {}) {
     },
     vertexShader:
       'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `
+    fragmentShader: NOISE_SHADER_CHUNK + `
             uniform sampler2D tDiffuse; uniform float uTime; uniform float uAmount;
             uniform float uSpeed; uniform float uFrequency; uniform vec2 uMouse;
             uniform float uMouseEnabled; uniform float uMouseRadius; uniform float uMouseIntensity;
             uniform float uFringeAmount; uniform vec2 uFlowDirection; varying vec2 vUv;
-            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-            float snoise(vec3 v) {
-                const vec2 C = vec2(1.0/6.0, 1.0/3.0); const vec4 D = vec4(0.0,0.5,1.0,2.0);
-                vec3 i = floor(v + dot(v, C.yyy)); vec3 x0 = v - i + dot(i, C.xxx);
-                vec3 g = step(x0.yzx, x0.xyz); vec3 l = 1.0 - g; vec3 i1 = min(g.xyz, l.zxy); vec3 i2 = max(g.xyz, l.zxy);
-                vec3 x1 = x0 - i1 + C.xxx; vec3 x2 = x0 - i2 + C.yyy; vec3 x3 = x0 - D.yyy;
-                i = mod289(i);
-                vec4 p = permute( permute( permute( i.z + vec4(0.0, i1.z, i2.z, 1.0 )) + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-                float n_ = 0.142857142857; vec3 ns = n_ * D.wyz - D.xzx;
-                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-                vec4 x_ = floor(j * ns.z); vec4 y_ = floor(j - 7.0 * x_);
-                vec4 x = x_ * ns.x + ns.yyyy; vec4 y = y_ * ns.x + ns.yyyy; vec4 h = 1.0 - abs(x) - abs(y);
-                vec4 b0 = vec4(x.xy, y.xy); vec4 b1 = vec4(x.zw, y.zw);
-                vec4 s0 = floor(b0)*2.0 + 1.0; vec4 s1 = floor(b1)*2.0 + 1.0; vec4 sh = -step(h, vec4(0.0));
-                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy; vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
-                vec3 p0 = vec3(a0.xy,h.x); vec3 p1 = vec3(a0.zw,h.y); vec3 p2 = vec3(a1.xy,h.z); vec3 p3 = vec3(a1.zw,h.w);
-                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-                p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
-                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-                m = m * m; return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
-            }
             void main(){
                 vec2 flowOffset = uFlowDirection * uTime * uSpeed * 0.1;
                 vec3 noisePos = vec3((vUv + flowOffset) * uFrequency, uTime * uSpeed);
@@ -600,6 +669,31 @@ export async function createTwilightFringe(containerEl, options = {}) {
   liquidPass.material.blending = THREE.NoBlending
   liquidPass.enabled = settings.liquidEnabled
   composer.addPass(liquidPass)
+
+  // --- New Optimized Liquid Pass ---
+  const OptimizedLiquidShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        uTime: { value: 0 },
+        uOptLiquidSpeed: { value: settings.optimizedLiquidSpeed },
+        uOptLiquidFrequency: { value: settings.optimizedLiquidFrequency },
+        uOptLiquidAmount: { value: settings.optimizedLiquidAmount },
+        uFringeAmount: { value: settings.fringeAmount },
+        // --- Mouse Interaction Uniforms ---
+        uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+        uMouseEnabled: { value: settings.mouseEnabled ? 1.0 : 0.0 },
+        uMouseRadius: { value: settings.mouseRadius },
+        uMouseIntensity: { value: settings.mouseIntensity },
+        uMouseFringeIntensity: { value: settings.mouseFringeIntensity }, // New Uniform
+        uMouseType: { value: 0 }, // 0 for Ripple, 1 for Vortex
+    },
+    vertexShader: OPTIMIZED_LIQUID_VERTEX_SHADER, // We will reuse the vertex shader
+    fragmentShader: OPTIMIZED_LIQUID_FRAGMENT_SHADER, // We will write a new fragment shader
+  };
+  const optimizedLiquidPass = new ShaderPass(OptimizedLiquidShader);
+  optimizedLiquidPass.enabled = settings.optimizedLiquidEnabled;
+  composer.addPass(optimizedLiquidPass);
+  // --- End New Pass ---
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -793,7 +887,48 @@ export async function createTwilightFringe(containerEl, options = {}) {
       .add(settings, 'glowRadius', 0.0, 1.0, 0.01)
       .onChange((v) => (bloomPass.radius = v))
 
-    gui.add(settings, 'loadImage').name('Load Image...')
+    // --- Optimized Liquid Effect GUI ---
+    const optLiquidFolder = gui.addFolder('Optimized Liquid Effect (Vertex)');
+    optLiquidFolder.add(settings, 'optimizedLiquidEnabled').name('enabled').onChange(v => {
+        optimizedLiquidPass.enabled = v;
+        if (v) {
+            startMeshAnimation(); // Start animation when enabled
+            liquidPass.enabled = false;
+            liquidFolder.controllers.find(c => c.property === 'liquidEnabled').setValue(false);
+        } else {
+            stopMeshAnimation(); // Stop animation when disabled
+        }
+    });
+    optLiquidFolder.add(settings, 'optimizedLiquidSpeed', 0, 2, 0.01).name('speed').onChange(v => optimizedLiquidPass.uniforms.uOptLiquidSpeed.value = v);
+    optLiquidFolder.add(settings, 'optimizedLiquidFrequency', 0, 20, 0.1).name('frequency').onChange(v => optimizedLiquidPass.uniforms.uOptLiquidFrequency.value = v);
+    optLiquidFolder.add(settings, 'optimizedLiquidAmount', 0, 0.2, 0.001).name('amount').onChange(v => optimizedLiquidPass.uniforms.uOptLiquidAmount.value = v);
+    optLiquidFolder.add(settings, 'fringeAmount', 0, 0.05, 0.001).name('fringe').onChange(v => optimizedLiquidPass.uniforms.uFringeAmount.value = v);
+
+    // --- Mouse Interaction GUI for Optimized Pass ---
+    const optMouseFolder = optLiquidFolder.addFolder('Mouse Interaction');
+    const mouseTypes = { 'Ripple / Push': 0, 'Vortex / Swirl': 1 };
+    const mouseSettings = { type: 0 }; // Local object to control the dropdown
+
+    optMouseFolder.add(settings, 'mouseEnabled').name('enabled').onChange(v => {
+        optimizedLiquidPass.uniforms.uMouseEnabled.value = v ? 1.0 : 0.0;
+    });
+
+    optMouseFolder.add(mouseSettings, 'type', mouseTypes).name('type').onChange(v => {
+        optimizedLiquidPass.uniforms.uMouseType.value = parseInt(v);
+    });
+
+    optMouseFolder.add(settings, 'mouseRadius', 0.01, 1.0, 0.01).name('radius').onChange(v => {
+        optimizedLiquidPass.uniforms.uMouseRadius.value = v;
+    });
+
+    optMouseFolder.add(settings, 'mouseIntensity', 0.0, 0.2, 0.001).name('intensity').onChange(v => {
+        optimizedLiquidPass.uniforms.uMouseIntensity.value = v;
+    });
+
+    optMouseFolder.add(settings, 'mouseFringeIntensity', 0.0, 20.0, 0.1).name('fringe intensity').onChange(v => {
+        optimizedLiquidPass.uniforms.uMouseFringeIntensity.value = v;
+    });
+
 
     if (imagePlane) {
       createImageGUI()
@@ -801,54 +936,56 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   function createImageGUI() {
-    if (imageFolder || !gui) return
-    imageFolder = gui.addFolder('Image Overlay')
+    if (imageFolder || !gui) return; // Exit if GUI is not ready or folder already exists
+
+    imageFolder = gui.addFolder('Image Overlay');
+
+    // This check is now sufficient because this function is only called *after* imagePlane is created.
+    if (!imagePlane) {
+        console.warn(`${LOG_PREFIX} createImageGUI called before imagePlane was created. No GUI will be shown.`);
+        return;
+    }
+
     imageFolder
       .add(settings, 'imageVisible')
       .name('visible')
-      .onChange((v) => (imagePlane.visible = v))
+      .onChange((v) => (imagePlane.visible = v));
+
     imageFolder
       .add(settings, 'imageSize', 0.1, 5.0, 0.01)
       .name('size')
       .onChange((v) => {
-        if (imagePlane) {
-          imagePlane.scale.set(v * imageAspectRatio, v, 1)
-        }
-      })
+        imagePlane.scale.set(v * imageAspectRatio, v, 1);
+      });
+
     imageFolder
       .add(settings, 'imageBrightness', 0.0, 3.0, 0.01)
       .name('brightness')
       .onChange((v) => {
-        if (imagePlane) {
-          imagePlane.material.uniforms.brightness.value = v
-        }
-      })
+        imagePlane.material.uniforms.brightness.value = v;
+      });
+
     imageFolder
       .add(settings, 'imageContrast', 0.0, 3.0, 0.01)
       .name('contrast')
       .onChange((v) => {
-        if (imagePlane) {
-          imagePlane.material.uniforms.contrast.value = v
-        }
-      })
+        imagePlane.material.uniforms.contrast.value = v;
+      });
 
-    const positionFolder = imageFolder.addFolder('Position')
+    const positionFolder = imageFolder.addFolder('Position');
     positionFolder
       .add(settings, 'imagePositionX', -2.0, 2.0, 0.01)
       .name('x')
       .onChange((v) => {
-        if (imagePlane) {
-          imagePlane.position.x = v
-        }
-      })
+        imagePlane.position.x = v;
+      });
+
     positionFolder
       .add(settings, 'imagePositionY', -2.0, 2.0, 0.01)
       .name('y')
       .onChange((v) => {
-        if (imagePlane) {
-          imagePlane.position.y = v
-        }
-      })
+        imagePlane.position.y = v;
+      });
   }
 
   // Separate animation controls for mesh and post-processing
@@ -870,20 +1007,28 @@ export async function createTwilightFringe(containerEl, options = {}) {
       if (settings.showMainEffect && mainMesh.visible) {
         material.uniforms.uTime.value = elapsedTime
       }
+
+      // Also update the optimized liquid plane's time uniform
+      if (settings.optimizedLiquidEnabled && optimizedLiquidPass.enabled) {
+        optimizedLiquidPass.uniforms.uTime.value = elapsedTime;
+      }
     }
 
     animateMesh()
   }
 
   function stopMeshAnimation() {
-    if (!isMeshAnimating) return
-
-    isMeshAnimating = false
-    if (meshAnimationId) {
-      cancelAnimationFrame(meshAnimationId)
-      meshAnimationId = null
+    // Only stop the animation if no effects that use it are active.
+    if (isMeshAnimating && !settings.showMainEffect && !settings.optimizedLiquidEnabled) {
+        isMeshAnimating = false;
+        if (meshAnimationId) {
+            cancelAnimationFrame(meshAnimationId);
+            meshAnimationId = null;
+        }
+        console.log(`${LOG_PREFIX} Mesh animation stopped because all dependent effects are off.`);
+    } else {
+        console.log(`${LOG_PREFIX} Request to stop mesh animation ignored, an effect is still active.`);
     }
-    console.log(`${LOG_PREFIX} Mesh animation stopped`)
   }
 
   function startPostProcessingAnimation() {
@@ -944,10 +1089,12 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
   console.log(`${LOG_PREFIX} Setting up mouse event listener...`)
   window.addEventListener('mousemove', (event) => {
-    liquidPass.uniforms.uMouse.value.set(
-      event.clientX / window.innerWidth,
-      1.0 - event.clientY / window.innerHeight
-    )
+    const mousePos = {
+      x: event.clientX / window.innerWidth,
+      y: 1.0 - event.clientY / window.innerHeight
+    };
+    liquidPass.uniforms.uMouse.value.set(mousePos.x, mousePos.y);
+    optimizedLiquidPass.uniforms.uMouse.value.set(mousePos.x, mousePos.y);
   })
 
   // Always start post-processing animation (for liquid effects, bloom, etc.)
@@ -975,6 +1122,15 @@ export async function createTwilightFringe(containerEl, options = {}) {
     renderer.setSize(window.innerWidth, window.innerHeight)
     composer.setSize(window.innerWidth, window.innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+    // Also resize the optimized liquid plane to fit the new aspect ratio
+    if (optimizedLiquidPlane) {
+        const distance = camera.position.z - 1;
+        const vFOV = THREE.MathUtils.degToRad(camera.fov);
+        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+        const planeWidth = planeHeight * camera.aspect;
+        optimizedLiquidPlane.scale.set(planeWidth, planeHeight, 1);
+    }
   })
 
   console.log(`${LOG_PREFIX} TwilightFringe instance created successfully!`)
@@ -1052,19 +1208,10 @@ async function initializeTwilightFringe() {
   }
 }
 
-console.log(`${LOG_PREFIX} Script loaded, waiting for DOMContentLoaded...`)
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log(`${LOG_PREFIX} DOMContentLoaded event fired`)
-  initializeTwilightFringe()
-})
-
-// Also try immediate initialization in case DOMContentLoaded already fired
+// Standard practice to initialize after DOM is ready, preventing double-execution.
 if (document.readyState === 'loading') {
-  console.log(
-    `${LOG_PREFIX} Document still loading, waiting for DOMContentLoaded`
-  )
+  document.addEventListener('DOMContentLoaded', initializeTwilightFringe);
 } else {
-  console.log(`${LOG_PREFIX} Document already loaded, initializing immediately`)
-  initializeTwilightFringe()
+  // DOMContentLoaded has already fired
+  initializeTwilightFringe();
 }

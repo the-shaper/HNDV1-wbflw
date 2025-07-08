@@ -28,3 +28,9 @@
     *   Ensure that when the new vertex effect is enabled, the old fragment-based `liquidPass` and the original `imagePlane` are automatically disabled to allow for a clear A/B comparison.
 6.  **Verification:**
     *   Visually compare the performance and aesthetics of the original fragment-based effect versus the new vertex-based effect.
+
+---
+### PACT
+
+- **Do not add a "Load Image" button or any image-loading functionality to the "Optimized Liquid Effect (Vertex)" GUI or its associated code unless explicitly asked to.** The optimized effect is a lens/filter and should not be responsible for loading its own textures.
+---

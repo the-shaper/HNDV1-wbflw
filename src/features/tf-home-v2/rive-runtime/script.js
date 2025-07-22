@@ -1,6 +1,6 @@
-import { Rive } from '@rive-app/webgl2' // WebGL 2 renderer
+import { Rive, Fit } from '@rive-app/webgl2' // WebGL 2 renderer
 // Build an absolute URL for the Rive binary; Vite will copy it to /dist
-const twilightRiv = new URL('./twilight_fringe_3.riv', import.meta.url).href
+const twilightRiv = new URL('./tf-dialog-run.riv', import.meta.url).href
 
 /**
  * Boot a Rive animation on the supplied canvas selector.
@@ -20,6 +20,11 @@ export default function initRiveCanvas(selector = '#rive-canvas') {
     canvas,
     src: twilightRiv,
     autoplay: true,
+    fit: Fit.Contain,
+    minX: 45,
+    minY: 45,
+    maxX: 75,
+    maxY: 75,
     //  artboard: 'Default',          // <- uncomment / rename if needed
     stateMachines: 'State Machine 1',
     useOffscreenRenderer: true,

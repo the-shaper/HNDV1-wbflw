@@ -384,6 +384,11 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
   console.log(`${LOG_PREFIX} Container element validated successfully`)
 
+  // --- State variables ---
+  let gui = null
+  let fileInput = null
+  let onMouseMove, onResize, onVisibilityChange
+
   // Load default settings from JSON
   const defaultSettings = await loadDefaultSettings()
   const attributeSettings = readSettingsFromDOM(containerEl)
@@ -470,7 +475,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
   // The 'loadImage' function is now handled by the GUI controller below.
   if (settings.showGUI) {
     // This setup allows the GUI to trigger a file input dialog.
-    const fileInput = document.createElement('input')
+    fileInput = document.createElement('input')
     fileInput.type = 'file'
     fileInput.accept = 'image/png'
     fileInput.style.display = 'none'
@@ -850,8 +855,6 @@ export async function createTwilightFringe(containerEl, options = {}) {
   bloomPass.radius = settings.glowRadius
   bloomPass.enabled = settings.glowEnabled
   composer.addPass(bloomPass)
-
-  let gui = null
 
   function createGUI() {
     if (gui) return
@@ -1471,14 +1474,15 @@ export async function createTwilightFringe(containerEl, options = {}) {
   renderer.setClearColor(settings.backgroundColor)
 
   console.log(`${LOG_PREFIX} Setting up mouse event listener...`)
-  window.addEventListener('mousemove', (event) => {
+  onMouseMove = (event) => {
     const mousePos = {
       x: event.clientX / window.innerWidth,
       y: 1.0 - event.clientY / window.innerHeight,
     }
     liquidPass.uniforms.uMouse.value.set(mousePos.x, mousePos.y)
     optimizedLiquidPass.uniforms.uMouse.value.set(mousePos.x, mousePos.y)
-  })
+  }
+  window.addEventListener('mousemove', onMouseMove)
 
   // Always start post-processing animation (for liquid effects, bloom, etc.)
   startPostProcessingAnimation()
@@ -1493,7 +1497,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   console.log(`${LOG_PREFIX} Setting up resize listener...`)
-  window.addEventListener('resize', () => {
+  onResize = () => {
     console.log(
       `${LOG_PREFIX} Window resized to:`,
       window.innerWidth,
@@ -1511,26 +1515,19 @@ export async function createTwilightFringe(containerEl, options = {}) {
       window.innerWidth,
       window.innerHeight
     )
-
-    // Also resize the optimized liquid plane to fit the new aspect ratio
-    if (optimizedLiquidPlane) {
-      const distance = camera.position.z - 1
-      const vFOV = THREE.MathUtils.degToRad(camera.fov)
-      const planeHeight = 2 * Math.tan(vFOV / 2) * distance
-      const planeWidth = planeHeight * camera.aspect
-      optimizedLiquidPlane.scale.set(planeWidth, planeHeight, 1)
-    }
-  })
+  }
+  window.addEventListener('resize', onResize)
 
   // ---------------- Tab visibility pause/resume ----------------
-  document.addEventListener('visibilitychange', () => {
+  onVisibilityChange = () => {
     if (document.hidden) {
       stopMeshAnimation()
       stopPostProcessingAnimation()
     } else {
       updateAnimationState()
     }
-  })
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange)
   // ---------------------------------------------------------------------------
 
   // Initialize animation state based on initial settings
@@ -1541,12 +1538,62 @@ export async function createTwilightFringe(containerEl, options = {}) {
   return {
     destroy: () => {
       console.log(`${LOG_PREFIX} Destroying instance...`)
+
+      // Stop all animations
       stopMeshAnimation()
       stopPostProcessingAnimation()
-      scene.clear()
+
+      // Remove event listeners
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('resize', onResize)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+
+      // Destroy GUI
+      if (gui) {
+        gui.destroy()
+        gui = null
+      }
+
+      // Remove file input from DOM
+      if (fileInput && fileInput.parentNode) {
+        fileInput.parentNode.removeChild(fileInput)
+        fileInput = null
+      }
+
+      // Dispose of Three.js objects
+      // Scene traversal for thorough cleanup
+      scene.traverse((object) => {
+        if (object.geometry) {
+          object.geometry.dispose()
+        }
+        if (object.material) {
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => {
+              if (material.map) material.map.dispose()
+              material.dispose()
+            })
+          } else {
+            if (object.material.map) object.material.map.dispose()
+            object.material.dispose()
+          }
+        }
+      })
+
+      // Dispose of post-processing passes
+      composer.passes.forEach((pass) => {
+        if (pass.material) pass.material.dispose()
+        if (pass.fsQuad) pass.fsQuad.dispose()
+      })
+
+      // Dispose of renderer and remove canvas
       renderer.dispose()
-      geometry.dispose()
-      material.dispose()
+      if (renderer.domElement.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement)
+      }
+
+      scene.clear()
+
+      console.log(`${LOG_PREFIX} Instance destroyed successfully.`)
     },
     startMeshAnimation,
     stopMeshAnimation,
@@ -1651,6 +1698,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
     },
   }
 }
+
 
 // Simplified initialization
 async function initializeTwilightFringe() {

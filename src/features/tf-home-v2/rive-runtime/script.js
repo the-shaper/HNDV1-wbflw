@@ -21,10 +21,11 @@ export default function initRiveCanvas(selector = '#rive-canvas') {
     src: twilightRiv,
     autoplay: true,
     fit: Fit.Contain,
-    minX: 45,
-    minY: 45,
-    maxX: 75,
-    maxY: 75,
+
+    minY: 40,
+    minX: 40,
+    maxX: 50,
+    maxY: 50,
     //  artboard: 'Default',          // <- uncomment / rename if needed
     stateMachines: 'State Machine 1',
     useOffscreenRenderer: true,

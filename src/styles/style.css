@@ -193,8 +193,8 @@ body.initial-load .slider-bg_component {
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 5%,
-    black 95%,
+    black 2%,
+    black 98%,
     transparent 99%
   );
 }
@@ -232,4 +232,14 @@ body.initial-load .slider-bg_component {
   visibility: hidden;
   transition: opacity 0.5s ease, visibility 0s linear 0.5s; /* Delay visibility: hidden until opacity transition finishes */
   pointer-events: none;
+}
+
+body::selection {
+  color: #484f4f;
+  background-color: #eaff36;
+}
+
+.tf-home-col-quadrant::selection {
+  color: #eaff36 !important;
+  background-color: #484f4f !important;
 }

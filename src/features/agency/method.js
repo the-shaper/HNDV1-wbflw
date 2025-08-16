@@ -18,7 +18,7 @@ function initMethod() {
     contentItemSelector: '.method-content-item',
     svgSize: 666,
     menuCollectionSize: 944,
-    menuRadius: 333,
+    menuRadius: 299,
     menuOffsetX: 278,
     menuOffsetY: 435,
     startAngle: -90, // This will make items start at 12 o'clock (-90 degrees)

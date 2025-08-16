@@ -13,7 +13,7 @@
     "metaballThreshold": 0.94,
     "orbitVisible": true,
     "showSun": true,
-    "sunColor": "#6a8689",
+    "sunColor": "#eaff36",
     "planetColor": "#6a8689",
     "showMoon1": true,
     "moon1Color": "#ff3d23",
@@ -25,6 +25,7 @@
     "mainOrbitThickness": 44,
     "radarColor": "#91f8e7",
     "radarThickness": 6,
+    "numRadarLines": 3,
     "activeDeliveryDays": {
       "monday": false,
       "tuesday": true,
@@ -33,11 +34,12 @@
       "friday": true,
       "saturday": false
     },
-    "planetActiveColor": "#eaff36",
+    "planetActiveColor": "#ff471a",
     "radarVisibilityMode": "activeDays",
     "dayMarkColor": "#d1e7de",
     "radarFlowDirection": "outward",
     "radarSetsPerDay": 1,
+    "radarAnimationSpeed": 0.6,
     "radarMaxRadiusFactor": 1,
     "radarMinRadius": 0.33
   },
@@ -65,8 +67,9 @@
     "moonOrbitSpeed": 1.0471696000000001,
     "mainOrbitColor": "#eaff36",
     "mainOrbitThickness": 44,
-    "radarColor": "#91f8e7",
-    "radarThickness": 3,
+    "radarColor": "#EAFF36",
+    "radarThickness": 7,
+    "numRadarLines": 3,
     "activeDeliveryDays": {
       "monday": false,
       "tuesday": true,
@@ -75,11 +78,12 @@
       "friday": true,
       "saturday": false
     },
-    "planetActiveColor": "#eeff00",
+    "planetActiveColor": "#1e8bf1",
     "radarVisibilityMode": "activeDays",
     "dayMarkColor": "#c6d9d1",
     "radarFlowDirection": "outward",
     "radarSetsPerDay": 2,
+    "radarAnimationSpeed": 1.8,
     "radarMaxRadiusFactor": 1,
     "radarMinRadius": 0.33
   }

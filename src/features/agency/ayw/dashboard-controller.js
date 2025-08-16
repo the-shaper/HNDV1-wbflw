@@ -64,6 +64,12 @@ class DashboardController {
     // NEW: Cache Project Name Input
     this.projectNameInput = document.getElementById('aywProjectName')
 
+    // NEW: Cache Dial Band and Form Signal elements
+    this.dialBandElement =
+      document.querySelector('.ayw-dialBand') ||
+      document.querySelector('.ayw-dialband')
+    this.formSignalElement = document.getElementById('ayw-form-signal')
+
     // --- Instance Storage ---
     // This assumes the Accordion is initialized elsewhere and we can find it if needed,
     // or it's passed during initialization. For simplicity, we'll assume querySelector works
@@ -192,6 +198,8 @@ class DashboardController {
           console.log(
             `Dashboard Controller: Set initial config button state for pane ${initialPaneNumber}`
           )
+          // NEW: Also update dial band and signal text for the initial pane
+          this.updateDialBandAndSignal(initialPaneNumber.toString())
         } else {
           console.warn(
             "Dashboard Controller: Initial accordion pane doesn't have 'open-pane' attribute."
@@ -525,6 +533,8 @@ class DashboardController {
         `Dashboard Controller: Processing accordionItemOpened for pane ${paneNumber}`
       )
       this.updateConfigButtonVisibility(paneNumber.toString())
+      // NEW: Update dial band classes and form signal text
+      this.updateDialBandAndSignal(paneNumber.toString())
     } else {
       console.warn(
         'Dashboard Controller: accordionItemOpened event missing paneNumber detail.',
@@ -605,6 +615,35 @@ class DashboardController {
 
     // Update the tracking property AFTER initiating animations
     this.activeConfigPaneNumber = newActivePaneNumber
+  }
+
+  // --- NEW: Update dial band classes and form signal text based on active pane ---
+  updateDialBandAndSignal(activePaneNumber) {
+    const pane = String(activePaneNumber)
+
+    // Update dial band combo class
+    if (this.dialBandElement) {
+      this.dialBandElement.classList.remove('d-1', 'd-2', 'd-3')
+      if (pane === '1') {
+        this.dialBandElement.classList.add('d-1')
+      } else if (pane === '2') {
+        this.dialBandElement.classList.add('d-2')
+      } else if (pane === '3') {
+        this.dialBandElement.classList.add('d-3')
+      }
+    } else {
+      console.warn('Dashboard Controller: .ayw-dialBand element not found.')
+    }
+
+    // Update form signal text
+    if (this.formSignalElement) {
+      if (pane === '1' || pane === '2' || pane === '3') {
+        this.formSignalElement.textContent = pane
+      }
+      // Future: when required form fields are completed, set to "APPLY!"
+    } else {
+      console.warn('Dashboard Controller: #ayw-form-signal element not found.')
+    }
   }
 
   // --- NEW Method ---

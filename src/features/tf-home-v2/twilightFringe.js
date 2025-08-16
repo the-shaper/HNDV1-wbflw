@@ -419,11 +419,13 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
   console.log(`${LOG_PREFIX} Final settings:`, settings)
 
-  // Performance tracking - separate for mesh and post-processing
-  let isMeshAnimating = false
-  let isPostProcessingAnimating = false
-  let meshAnimationId = null
-  let postProcessingAnimationId = null
+  // Performance tracking
+  let isAnimating = false
+  let animationId = null
+  const clock = new THREE.Clock()
+  let lastFrameTime = 0
+  const targetFPS = 60
+  const frameTime = 1000 / targetFPS
 
   console.log(`${LOG_PREFIX} Creating Three.js scene...`)
   const scene = new THREE.Scene()
@@ -436,9 +438,15 @@ export async function createTwilightFringe(containerEl, options = {}) {
   camera.position.z = 3
 
   console.log(`${LOG_PREFIX} Creating WebGL renderer...`)
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-  renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO))
+  const pixelRatio = Math.min(window.devicePixelRatio, 2) // Cap at 2x for high DPI
+  const renderer = new THREE.WebGLRenderer({ 
+    antialias: true, 
+    alpha: true,
+    powerPreference: 'high-performance',
+    precision: 'mediump' // Use lower precision for better performance
+  })
+  renderer.setPixelRatio(pixelRatio)
+  renderer.setSize(containerEl.clientWidth, containerEl.clientHeight, false)
 
   // Container styling with logging
   console.log(`${LOG_PREFIX} Setting up container styling...`)
@@ -1334,133 +1342,91 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   // ---------------- Helper functions to control animation state ----------------
-  function shouldRunMesh() {
-    return settings.showMainEffect || settings.optimizedLiquidEnabled
-  }
-  function shouldRunPost() {
-    // Post-processing (which performs the final render via EffectComposer) must keep
-    // running not only when screen-space effects are enabled, but also whenever the
-    // main mesh itself is animating. Otherwise the scene stops refreshing when the
-    // user toggles those effects off. We therefore include `settings.showMainEffect`
-    // in the condition.
+  function shouldAnimate() {
     return (
-      liquidPass.enabled ||
-      optimizedLiquidPass.enabled ||
-      bloomPass.enabled ||
-      diffusePass.enabled ||
-      settings.showMainEffect
+      settings.showMainEffect || 
+      settings.optimizedLiquidEnabled ||
+      (settings.showPostProcessing && 
+       (liquidPass?.enabled || diffusePass?.enabled || settings.showMainEffect))
     )
   }
+  
   function updateAnimationState() {
-    if (shouldRunMesh()) {
-      startMeshAnimation()
+    if (shouldAnimate()) {
+      startAnimation()
     } else {
-      stopMeshAnimation()
-    }
-
-    if (shouldRunPost()) {
-      startPostProcessingAnimation()
-    } else {
-      stopPostProcessingAnimation()
+      stopAnimation()
     }
   }
   // ---------------------------------------------------------------------------
 
-  // Separate animation controls for mesh and post-processing
-  function startMeshAnimation() {
-    if (isMeshAnimating) return
+  // Consolidated animation control
 
-    isMeshAnimating = true
-    console.log(`${LOG_PREFIX} Starting mesh animation...`)
-
-    const meshClock = new THREE.Clock()
-
-    function animateMesh() {
-      if (!isMeshAnimating) return
-
-      meshAnimationId = requestAnimationFrame(animateMesh)
-      const elapsedTime = meshClock.getElapsedTime()
-
-      // Only update mesh uniforms
-      if (settings.showMainEffect && mainMesh.visible) {
+  function startAnimation() {
+    if (isAnimating) return
+    
+    isAnimating = true
+    clock.start()
+    console.log(`${LOG_PREFIX} Starting animation...`)
+    
+    function animate() {
+      if (!isAnimating) return
+      
+      // Check if tab is visible
+      if (document.visibilityState === 'hidden') {
+        animationId = requestAnimationFrame(animate)
+        return
+      }
+      
+      const currentTime = performance.now()
+      const deltaTime = currentTime - lastFrameTime
+      
+      // Frame rate limiting
+      if (deltaTime < frameTime) {
+        animationId = requestAnimationFrame(animate)
+        return
+      }
+      
+      lastFrameTime = currentTime - (deltaTime % frameTime)
+      const elapsedTime = clock.getElapsedTime()
+      
+      // Update mesh uniforms if needed
+      if (settings.showMainEffect && mainMesh?.visible) {
         material.uniforms.uTime.value = elapsedTime
       }
-
-      // Also update the optimized liquid plane's time uniform
-      if (settings.optimizedLiquidEnabled && optimizedLiquidPass.enabled) {
+      
+      // Update optimized liquid if enabled
+      if (settings.optimizedLiquidEnabled && optimizedLiquidPass?.enabled) {
         optimizedLiquidPass.uniforms.uTime.value = elapsedTime
       }
-    }
-
-    animateMesh()
-  }
-
-  function stopMeshAnimation() {
-    // Only stop the animation if no effects that use it are active.
-    if (
-      isMeshAnimating &&
-      !settings.showMainEffect &&
-      !settings.optimizedLiquidEnabled
-    ) {
-      isMeshAnimating = false
-      if (meshAnimationId) {
-        cancelAnimationFrame(meshAnimationId)
-        meshAnimationId = null
+      
+      // Update post-processing
+      if (liquidPass) {
+        liquidPass.uniforms.uTime.value = elapsedTime
       }
-      console.log(
-        `${LOG_PREFIX} Mesh animation stopped because all dependent effects are off.`
-      )
-    } else {
-      console.log(
-        `${LOG_PREFIX} Request to stop mesh animation ignored, an effect is still active.`
-      )
-    }
-  }
-
-  function startPostProcessingAnimation() {
-    if (isPostProcessingAnimating) return
-
-    isPostProcessingAnimating = true
-    console.log(`${LOG_PREFIX} Starting post-processing animation...`)
-
-    const postClock = new THREE.Clock()
-    let frameCount = 0
-
-    function animatePostProcessing() {
-      if (!isPostProcessingAnimating) return
-
-      postProcessingAnimationId = requestAnimationFrame(animatePostProcessing)
-      const elapsedTime = postClock.getElapsedTime()
-
-      // Update post-processing uniforms
-      liquidPass.uniforms.uTime.value = elapsedTime
-
+      
       // Render the scene
-      composer.render()
-
-      // Log every 1800 frames (once every 30 seconds at 60fps) - much less frequent
-      if (frameCount % 1800 === 0 && frameCount > 0) {
-        console.log(
-          `${LOG_PREFIX} Post-processing running - Frame ${frameCount}, Time: ${elapsedTime.toFixed(
-            2
-          )}s, Mesh Active: ${isMeshAnimating}`
-        )
+      if (composer) {
+        composer.render()
+      } else if (renderer && scene && camera) {
+        renderer.render(scene, camera)
       }
-      frameCount++
+      
+      animationId = requestAnimationFrame(animate)
     }
-
-    animatePostProcessing()
+    
+    animate()
   }
-
-  function stopPostProcessingAnimation() {
-    if (!isPostProcessingAnimating) return
-
-    isPostProcessingAnimating = false
-    if (postProcessingAnimationId) {
-      cancelAnimationFrame(postProcessingAnimationId)
-      postProcessingAnimationId = null
+  
+  function stopAnimation() {
+    if (isAnimating) {
+      isAnimating = false
+      if (animationId) {
+        cancelAnimationFrame(animationId)
+        animationId = null
+      }
+      console.log(`${LOG_PREFIX} Animation stopped.`)
     }
-    console.log(`${LOG_PREFIX} Post-processing animation stopped`)
   }
 
   if (settings.showGUI) {
@@ -1484,17 +1450,8 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
   window.addEventListener('mousemove', onMouseMove)
 
-  // Always start post-processing animation (for liquid effects, bloom, etc.)
-  startPostProcessingAnimation()
-
-  // Start mesh animation only if main effect is enabled
-  if (settings.showMainEffect) {
-    startMeshAnimation()
-  } else {
-    console.log(
-      `${LOG_PREFIX} Main effect disabled, mesh animation not started`
-    )
-  }
+  // Always start animation
+  startAnimation()
 
   console.log(`${LOG_PREFIX} Setting up resize listener...`)
   onResize = () => {
@@ -1518,85 +1475,65 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
   window.addEventListener('resize', onResize)
 
-  // ---------------- Tab visibility pause/resume ----------------
-  onVisibilityChange = () => {
-    if (document.hidden) {
-      stopMeshAnimation()
-      stopPostProcessingAnimation()
+  // Add event listeners for visibility changes
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // Restart animation if needed when tab becomes visible
+      if (shouldAnimate() && !isAnimating) {
+        startAnimation()
+      }
     } else {
-      updateAnimationState()
+      // Pause animation when tab is hidden
+      if (isAnimating) {
+        stopAnimation()
+      }
     }
-  }
-  document.addEventListener('visibilitychange', onVisibilityChange)
-  // ---------------------------------------------------------------------------
+  })
 
-  // Initialize animation state based on initial settings
-  updateAnimationState()
-
-  console.log(`${LOG_PREFIX} TwilightFringe instance created successfully!`)
-
-  return {
-    destroy: () => {
-      console.log(`${LOG_PREFIX} Destroying instance...`)
-
-      // Stop all animations
-      stopMeshAnimation()
-      stopPostProcessingAnimation()
-
-      // Remove event listeners
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('resize', onResize)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-
-      // Destroy GUI
-      if (gui) {
-        gui.destroy()
-        gui = null
+  // Scene cleanup function
+  function cleanupScene() {
+    scene.traverse((object) => {
+      if (object.geometry) {
+        object.geometry.dispose()
       }
-
-      // Remove file input from DOM
-      if (fileInput && fileInput.parentNode) {
-        fileInput.parentNode.removeChild(fileInput)
-        fileInput = null
+      if (object.material) {
+        if (Array.isArray(object.material)) {
+          object.material.forEach((material) => {
+            if (material.map) material.map.dispose()
+            material.dispose()
+          })
+        } else {
+          if (object.material.map) object.material.map.dispose()
+          object.material.dispose()
+        }
       }
+    })
 
-      // Dispose of Three.js objects
-      // Scene traversal for thorough cleanup
-      scene.traverse((object) => {
-        if (object.geometry) {
-          object.geometry.dispose()
-        }
-        if (object.material) {
-          if (Array.isArray(object.material)) {
-            object.material.forEach((material) => {
-              if (material.map) material.map.dispose()
-              material.dispose()
-            })
-          } else {
-            if (object.material.map) object.material.map.dispose()
-            object.material.dispose()
-          }
-        }
-      })
-
-      // Dispose of post-processing passes
+    // Dispose of post-processing passes
+    if (composer) {
       composer.passes.forEach((pass) => {
         if (pass.material) pass.material.dispose()
         if (pass.fsQuad) pass.fsQuad.dispose()
       })
+    }
 
-      // Dispose of renderer and remove canvas
+    // Dispose of renderer and remove canvas
+    if (renderer) {
       renderer.dispose()
-      if (renderer.domElement.parentNode) {
+      if (renderer.domElement && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement)
       }
+    }
 
-      scene.clear()
+    scene.clear()
+    console.log(`${LOG_PREFIX} Instance destroyed successfully.`)
+  }
 
-      console.log(`${LOG_PREFIX} Instance destroyed successfully.`)
-    },
-    startMeshAnimation,
-    stopMeshAnimation,
+  // Return public API
+  return {
+    destroy: cleanupScene,
+    startAnimation,
+    stopAnimation,
     updateSettings: (newSettings) => {
       Object.assign(settings, newSettings)
 

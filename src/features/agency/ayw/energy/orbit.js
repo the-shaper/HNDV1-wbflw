@@ -28,6 +28,14 @@ const dayNames = [
 const daySegmentAngle = (Math.PI * 2) / 6 // Angle per day segment (60 degrees)
 // --- End of added constants ---
 
+// Helper: compute spread factor based on number of lines to avoid overlap when > 3
+function computeSetSpreadFactor(numLinesInSet) {
+  if (numLinesInSet <= 3) return 0.5
+  const extra = numLinesInSet - 3
+  // increase spread towards 0.9 as count grows to 6
+  return Math.min(0.9, 0.5 + extra * 0.1333)
+}
+
 // Base speed for PLANET exponential calculation
 const defaultPlanetActualSpeed = 0.1
 const planetSpeedBase = defaultPlanetActualSpeed / Math.pow(PHI, 5 - 1) // Slider 5 -> 0.1
@@ -128,7 +136,7 @@ function resetOrbitalState() {
 
     const maxScale = mainOrbitRadius * radarMaxRadiusFactor
     const radiusRange = maxScale - minScale
-    const setSpreadFactor = 0.5 // Consistent with animation logic
+    const setSpreadFactor = computeSetSpreadFactor(numRadarLines) // Consistent with animation logic
 
     lines.forEach((lineMesh, i) => {
       let resetScale
@@ -149,16 +157,27 @@ function resetOrbitalState() {
       }
 
       lineMesh.scale.set(resetScale, resetScale, 1)
-      lineMesh.userData.hasCompletedCycle = false
-      // Visibility will be handled by the animation loop based on radarVisibilityMode
-      // However, if radarVisibilityMode is 'always', ensure they are visible.
-      if (defaultInternalOrbitParams.radarVisibilityMode === 'always') {
-        lineMesh.visible = true
+      // Determine initial visibility/state based on whether current day is active in 'activeDays' mode
+      const pivot = orbitScene.getObjectByName('planetPivot')
+      const pivotAngle = pivot ? pivot.rotation.z : 0
+      const dayProgressAngle =
+        ((-pivotAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+      let dayIndex = Math.floor(dayProgressAngle / daySegmentAngle) % 6
+      const currentDayName = dayNames[dayIndex]
+      const activeDaysState =
+        defaultInternalOrbitParams.activeDeliveryDays || {}
+      const isCurrentDayActive = !!activeDaysState[currentDayName]
+      const isActiveDaysMode =
+        defaultInternalOrbitParams.radarVisibilityMode === 'activeDays'
+
+      if (isActiveDaysMode && !isCurrentDayActive) {
+        lineMesh.userData.hasCompletedCycle = true
+        lineMesh.visible = false
       } else {
-        // For 'activeDays', visibility depends on lerpFactor, let animation loop handle.
-        // For safety, ensure they are not stuck visible if they shouldn't be.
-        // This might be complex, the animation loop should correctly set visibility.
-        // For now, let's assume the animation loop will correctly set visibility on the next frame.
+        lineMesh.userData.hasCompletedCycle = false
+        if (defaultInternalOrbitParams.radarVisibilityMode === 'always') {
+          lineMesh.visible = true
+        }
       }
     })
     console.log('[orbit.js resetOrbitalState] Radar lines reset.')
@@ -215,6 +234,9 @@ function setupOrbitControls(initialParams) {
   const radarColorPicker = document.getElementById('radarColor')
   const radarThicknessSlider = document.getElementById('radarThickness')
   const radarThicknessValueSpan = document.getElementById('radarThicknessValue')
+  // NEW: Radar Rings per Group
+  const numRadarLinesSlider = document.getElementById('numRadarLines')
+  const numRadarLinesValueSpan = document.getElementById('numRadarLinesValue')
   // NEW: Delivery Day Controls Refs
   const deliveryDayCheckboxes = document.querySelectorAll(
     'input[name="deliveryDay"]'
@@ -299,6 +321,13 @@ function setupOrbitControls(initialParams) {
     'radarThicknessValue',
     initialParams.radarThickness,
     0 // Display as integer
+  )
+  // NEW: Setup Radar Rings per Group Slider
+  setupSlider(
+    numRadarLinesSlider,
+    'numRadarLinesValue',
+    initialParams.numRadarLines,
+    0
   )
 
   // NEW: Setup Radar Visibility Mode
@@ -451,6 +480,17 @@ function setupOrbitControls(initialParams) {
       const thickness = parseInt(e.target.value, 10) // Use parseInt for 1-5
       updateValueDisplay('radarThicknessValue', thickness, 0) // Display as integer
       updateOrbitParameters({ radarThickness: thickness })
+    })
+  }
+
+  // NEW: Radar Rings per Group Listener
+  if (numRadarLinesSlider) {
+    numRadarLinesSlider.addEventListener('input', (e) => {
+      const count = parseInt(e.target.value, 10)
+      updateValueDisplay('numRadarLinesValue', count, 0)
+      updateOrbitParameters({ numRadarLines: count })
+      // Rebuild radar lines immediately to reflect the new count
+      rebuildRadarSignalLines()
     })
   }
 
@@ -922,8 +962,8 @@ function initializeOrbit(options = {}, initialParams = null, modeId = null) {
     instanceParams.mainOrbitRadius * instanceParams.radarMaxRadiusFactor // Use instanceParams
   const radarMinRadiusUsed = instanceParams.radarMinRadius // Use instanceParams for consistency
   const radiusRange = radarMaxRadius - radarMinRadiusUsed
-  const numLinesInSet = instanceParams.numRadarLines // Should be 3 by default
-  const setSpreadFactor = 0.5 // How spread out lines are within a set (0: superimposed, 1: spread over full range allowed by factor)
+  const numLinesInSet = instanceParams.numRadarLines // User-configurable
+  const setSpreadFactor = computeSetSpreadFactor(numLinesInSet) // Dynamic spread to avoid overlap
 
   for (let i = 0; i < numLinesInSet; i++) {
     const radarLineMesh = new THREE.Mesh(
@@ -1399,7 +1439,7 @@ function updateOrbitAnimation(deltaTime) {
     const flowDirection = currentInstanceParams.radarFlowDirection
     const numLinesInSet = currentInstanceParams.numRadarLines
     const radiusRange = maxScale - minScale
-    const setSpreadFactor = 0.5
+    const setSpreadFactor = computeSetSpreadFactor(numLinesInSet)
     const setsParamValue = currentInstanceParams.radarSetsPerDay // How many sets in a loop or burst
 
     let currentSetHasActivelyAnimatingLine = false
@@ -1477,9 +1517,14 @@ function updateOrbitAnimation(deltaTime) {
     } else {
       const radarIsVisuallyActive = isDayActive && lerpFactor > 0.1
 
-      radarGroup.visible = lerpFactor > 0.001
+      // Keep the group visible if there are waves currently animating,
+      // even when transitioning to an inactive day. Only hide when no
+      // waves are animating AND the visual lerp says it should be hidden.
+      const shouldShowGroup =
+        currentSetHasActivelyAnimatingLine || lerpFactor > 0.001
+      radarGroup.visible = shouldShowGroup
       if (radarLineMaterialRef) {
-        // radarLineMaterialRef.uniforms.opacity.value = lerpFactor; // This line no longer has a visual effect on opaque materials
+        // opacity is managed by material transparency; we keep current behavior
       }
 
       if (radarIsVisuallyActive) {
@@ -1506,6 +1551,65 @@ function updateOrbitAnimation(deltaTime) {
     }
   }
 } // --- End updateOrbitAnimation ---
+
+// --- NEW: Rebuild Radar Lines Utility ---
+function rebuildRadarSignalLines() {
+  if (!orbitScene) return
+  const radarGroup = orbitScene.getObjectByName('radarSignalGroup')
+  if (!radarGroup) return
+
+  // Remove existing lines
+  while (radarGroup.children.length) {
+    const child = radarGroup.children.pop()
+    if (child && child.geometry) child.geometry.dispose?.()
+    // Materials are shared; don't dispose the shared radarLineMaterialRef here
+  }
+
+  // Recreate based on current params
+  const p = defaultInternalOrbitParams
+  const radarMaxRadius = p.mainOrbitRadius * p.radarMaxRadiusFactor
+  const radarMinRadiusUsed = p.radarMinRadius
+  const radiusRange = radarMaxRadius - radarMinRadiusUsed
+  const numLinesInSet = p.numRadarLines
+  const setSpreadFactor = computeSetSpreadFactor(numLinesInSet)
+
+  // Reuse base line geometry created during init
+  const baseLineGeometry = new MeshLine()
+  const points = []
+  const divisions = 64
+  for (let i = 0; i <= divisions; i++) {
+    const angle = (i / divisions) * Math.PI * 2
+    points.push(Math.cos(angle), Math.sin(angle), 0)
+  }
+  baseLineGeometry.setPoints(points, () => 1)
+
+  const lines = []
+  for (let i = 0; i < numLinesInSet; i++) {
+    const mesh = new THREE.Mesh(baseLineGeometry, radarLineMaterialRef)
+    let initialScale
+    if (p.radarFlowDirection === 'inward') {
+      initialScale =
+        radarMaxRadius -
+        (i / Math.max(1, numLinesInSet - 1)) * (radiusRange * setSpreadFactor)
+      initialScale = Math.max(radarMinRadiusUsed, initialScale)
+    } else {
+      initialScale =
+        radarMinRadiusUsed +
+        (i / Math.max(1, numLinesInSet - 1)) * (radiusRange * setSpreadFactor)
+      initialScale = Math.min(radarMaxRadius, initialScale)
+    }
+    if (numLinesInSet === 1) {
+      initialScale =
+        p.radarFlowDirection === 'inward' ? radarMaxRadius : radarMinRadiusUsed
+    }
+    mesh.scale.set(initialScale, initialScale, 1)
+    mesh.position.z = 0.1
+    mesh.userData.hasCompletedCycle = false
+    radarGroup.add(mesh)
+    lines.push(mesh)
+  }
+  radarGroup.userData.lines = lines
+}
 
 // --- NEW: Scene Rendering Function ---
 // Renders the orbit scene onto the provided renderer

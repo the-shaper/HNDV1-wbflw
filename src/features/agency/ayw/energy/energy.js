@@ -101,6 +101,7 @@ let defaultParams = {
   mainOrbitThickness: 6,
   radarColor: '#a0a0a0', // Converted from 0xa0a0a0
   radarThickness: 1,
+  numRadarLines: 3,
   activeDeliveryDays: {
     monday: false,
     tuesday: true,
@@ -875,6 +876,7 @@ function getCurrentSettingsFromControls() {
   settings.mainOrbitThickness = getIntValue('mainOrbitThickness')
   settings.radarColor = getStringValue('radarColor')
   settings.radarThickness = getIntValue('radarThickness')
+  settings.numRadarLines = getIntValue('numRadarLines')
 
   // Active Delivery Days: Construct object from checkboxes
   const activeDays = {}
@@ -1164,6 +1166,12 @@ function loadModeToPreview(modeId) {
     'radarThicknessValue',
     getVal('radarThickness')
   )
+  // NEW: Update radar rings per group UI
+  updateSliderAndDisplay(
+    'numRadarLines',
+    'numRadarLinesValue',
+    getVal('numRadarLines')
+  )
 
   // Update Delivery Day Checkboxes
   const deliveryDays = getVal('activeDeliveryDays') || {}
@@ -1419,6 +1427,8 @@ function setupControls(initialParams) {
   const radarColorPicker = document.getElementById('radarColor')
   const radarThicknessSlider = document.getElementById('radarThickness')
   const radarThicknessValueSpan = document.getElementById('radarThicknessValue')
+  const numRadarLinesSlider = document.getElementById('numRadarLines')
+  const numRadarLinesValueSpan = document.getElementById('numRadarLinesValue')
   // NEW: Get reference to radar flow direction radios
   const radarFlowDirectionRadios = document.querySelectorAll(
     'input[name="radarFlowDirection"]'
@@ -1574,6 +1584,12 @@ function setupControls(initialParams) {
     radarThicknessSlider,
     radarThicknessValueSpan,
     params.radarThickness
+  )
+  // NEW: Setup radar rings per group
+  setupSliderAndDisplay(
+    numRadarLinesSlider,
+    numRadarLinesValueSpan,
+    params.numRadarLines
   )
 
   // Delivery Day Checkboxes
@@ -1758,6 +1774,19 @@ function setupControls(initialParams) {
       updateValueDisplay(radarThicknessValueSpan.id, thickness)
       updateOrbitModuleParameters({ radarThickness: thickness })
     })
+  // NEW: Radar rings per group listener
+  if (numRadarLinesSlider) {
+    numRadarLinesSlider.addEventListener('input', (e) => {
+      const count = parseInt(e.target.value, 10)
+      updateValueDisplay('numRadarLinesValue', count, 0)
+      // Inform orbit module; takes effect on next init/reset where lines are rebuilt
+      updateOrbitModuleParameters({ numRadarLines: count })
+      // Optionally re-run reset to re-seed current set positions
+      if (typeof resetOrbitalState === 'function') {
+        resetOrbitalState()
+      }
+    })
+  }
 
   // Delivery Day Checkbox Listeners
   if (deliveryDayCheckboxes) {

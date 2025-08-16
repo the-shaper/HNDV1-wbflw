@@ -66,7 +66,21 @@ function initAccordionAYW() {
       }
     }
 
-    // Renamed from toggleItem to make intention clearer when called internally
+    updateLabelVisibility() {
+      this.items.forEach((item) => {
+        const tabTitle = item.querySelector('.ayw-tab-title-wrapper')
+        const labelWrap = item.querySelector('.ayw-accordion-label-wrap')
+
+        if (!tabTitle || !labelWrap) return // Skip if elements don't exist
+
+        if (tabTitle.classList.contains('is-active')) {
+          labelWrap.classList.remove('off')
+        } else {
+          labelWrap.classList.add('off')
+        }
+      })
+    }
+
     openItem(itemToOpen, animate = true) {
       const content = itemToOpen.querySelector('.ayw-accordion-pane')
       const contentInner = itemToOpen.querySelector(
@@ -76,37 +90,11 @@ function initAccordionAYW() {
       const tabTitle = itemToOpen.querySelector('.ayw-tab-title-wrapper')
       const paneNumber = itemToOpen
         .querySelector('.ayw-accordion-pane')
-        ?.getAttribute('open-pane') // Use optional chaining
+        ?.getAttribute('open-pane')
 
       // Update active index FIRST
       this.activeIndex = this.items.indexOf(itemToOpen)
-      console.log(`Accordion: Updated activeIndex to ${this.activeIndex}`) // Add log
-
-      // Dispatch event AFTER updating activeIndex
-      if (paneNumber) {
-        // Only dispatch if we have a valid pane number
-        this.element.dispatchEvent(
-          new CustomEvent('accordionItemOpened', {
-            // Pass the new activeIndex and paneNumber in the detail
-            detail: { paneNumber: paneNumber, activeIndex: this.activeIndex },
-            bubbles: true, // Allow event to bubble up
-          })
-        )
-        console.log(
-          `Accordion: Dispatched accordionItemOpened for pane ${paneNumber} (activeIndex: ${this.activeIndex})`
-        )
-      } else {
-        // Even if paneNumber is missing, we might still want to notify about the index change
-        this.element.dispatchEvent(
-          new CustomEvent('accordionItemOpened', {
-            detail: { activeIndex: this.activeIndex }, // Send index anyway
-            bubbles: true,
-          })
-        )
-        console.warn(
-          `Accordion: Dispatched accordionItemOpened without paneNumber (activeIndex: ${this.activeIndex})`
-        )
-      }
+      console.log(`Accordion: Updated activeIndex to ${this.activeIndex}`)
 
       // Close currently active item (if different)
       this.items.forEach((item) => {
@@ -120,27 +108,42 @@ function initAccordionAYW() {
       tabNumber?.classList.add('is-active')
       tabTitle?.classList.add('is-active')
 
+      // Update label visibility when opening
+      this.updateLabelVisibility()
+
       // Use config animation speed, or 0 if not animating
       const duration = animate ? ACCORDION_CONFIG.animationSpeed : 0
-      const targetHeight = contentInner ? contentInner.offsetHeight : 'auto' // Calculate target height for animation
+      const targetHeight = contentInner ? contentInner.offsetHeight : 'auto'
 
-      // Animate height from 0 to content height (or auto if no inner)
+      // Animate height from 0 to content height
       gsap.to(content, {
         height: targetHeight,
-        duration: duration, // Use configured duration
-        ease: ACCORDION_CONFIG.easingType, // Use configured ease
+        duration: duration,
+        ease: ACCORDION_CONFIG.easingType,
         onComplete: () => {
-          // After animation, remove inline height AND set flex-grow
           gsap.set(content, { height: 'auto' })
         },
       })
 
       // Show corresponding dynamic element
-      // Update: Use the reliable activeIndex now
-      this.updateDynamicElements(paneNumber) // Keep using paneNumber if needed for dynamic elements
+      this.updateDynamicElements(paneNumber)
 
-      // Optional: Dispatch event when item changes - redundant if using accordionItemOpened
-      // this.element.dispatchEvent(new CustomEvent('accordionChanged', { detail: { activeIndex: this.activeIndex } }));
+      // Dispatch event
+      if (paneNumber) {
+        this.element.dispatchEvent(
+          new CustomEvent('accordionItemOpened', {
+            detail: { paneNumber: paneNumber, activeIndex: this.activeIndex },
+            bubbles: true,
+          })
+        )
+      } else {
+        this.element.dispatchEvent(
+          new CustomEvent('accordionItemOpened', {
+            detail: { activeIndex: this.activeIndex },
+            bubbles: true,
+          })
+        )
+      }
     }
 
     closeItem(itemToClose, animate = true) {
@@ -155,12 +158,15 @@ function initAccordionAYW() {
       itemTabNumber?.classList.remove('is-active')
       itemTabTitle?.classList.remove('is-active')
 
+      // Update label visibility when closing
+      this.updateLabelVisibility()
+
       // Use config animation speed, or 0 if not animating
       const duration = animate ? ACCORDION_CONFIG.animationSpeed : 0
       gsap.to(itemContent, {
         height: 0,
-        duration: duration, // Use configured duration
-        ease: ACCORDION_CONFIG.easingType, // Use configured ease
+        duration: duration,
+        ease: ACCORDION_CONFIG.easingType,
       })
     }
 

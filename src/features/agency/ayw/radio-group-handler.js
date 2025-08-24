@@ -54,3 +54,58 @@ export function handleRadioGroupVisuals(clickedLabel) {
     clickedWebflowInput.classList.add('w--redirected-checked')
   }
 }
+
+/**
+ * Toggles visuals and underlying state for a single checkbox wrapper.
+ * Expects a structure like: .w-checkbox.ayw-checkbox.ielo > input[type="checkbox"].checkbox-ayw
+ *
+ * Behavior:
+ * - Adds/removes .is-pressed on the wrapper based on checked state
+ * - Adds/removes Webflow's .w--redirected-checked on the visual input element
+ * - Toggles the native checkbox checked state and dispatches a change event
+ *
+ * @param {HTMLElement} clickedWrapper The clicked checkbox wrapper (.ayw-checkbox)
+ * @returns {boolean|undefined} The new checked state, or undefined if failed
+ */
+export function handleCheckboxVisuals(clickedWrapper) {
+  if (!clickedWrapper) {
+    console.error('handleCheckboxVisuals: clickedWrapper is not provided')
+    return
+  }
+
+  const checkboxInput = clickedWrapper.querySelector('input[type="checkbox"]')
+  if (!checkboxInput) {
+    console.error(
+      'Could not find checkbox input within wrapper:',
+      clickedWrapper
+    )
+    return
+  }
+
+  // Determine the next state and apply it to the input
+  const nextChecked = !checkboxInput.checked
+  checkboxInput.checked = nextChecked
+
+  // Update wrapper pressed state
+  if (nextChecked) {
+    clickedWrapper.classList.add('is-pressed')
+  } else {
+    clickedWrapper.classList.remove('is-pressed')
+  }
+
+  // Update Webflow visual input state, if present
+  const webflowInput = clickedWrapper.querySelector('.w-checkbox-input')
+  if (webflowInput) {
+    if (nextChecked) {
+      webflowInput.classList.add('w--redirected-checked')
+    } else {
+      webflowInput.classList.remove('w--redirected-checked')
+    }
+  }
+
+  // Notify any listeners that the value changed
+  const changeEvent = new Event('change', { bubbles: true })
+  checkboxInput.dispatchEvent(changeEvent)
+
+  return nextChecked
+}

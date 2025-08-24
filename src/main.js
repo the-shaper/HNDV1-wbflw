@@ -136,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
       import('./features/agency/ayw/energy/comms'), // Contains startWorkingHoursAnimation, stopWorkingHoursAnimation (named exports)
       import('./features/agency/ayw/energy/phoneLine.js'), // Import for side effects (self-initializing IIFE)
       import('./features/agency/ayw/ayw-introModal.js'), // Import the new intro modal script
+      import('./features/agency/ayw/ayw-rive/ayw-rive-script.js'), // AYW Rive animation script
     ])
       .then(
         ([
@@ -145,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
           commsModule,
           phoneLineModule, // phoneLineModule will be undefined or an empty object as it's an IIFE
           introModalModule,
+          aywRiveModule,
         ]) => {
           // Initialize AYW modules if exports are functions
           if (typeof aywModule.initAccordionAYW === 'function') {
@@ -194,6 +196,24 @@ document.addEventListener('DOMContentLoaded', () => {
           } else {
             console.error(
               'Error: initIntroModal not exported as default function or is not a function in ./features/agency/ayw/ayw-introModal.js.'
+            )
+          }
+
+          // Initialize AYW Rive Canvas if canvas exists
+          if (typeof aywRiveModule.default === 'function') {
+            // Only initialize if there's an AYW Rive canvas on the page
+            const aywRiveCanvas = document.getElementById('ayw-rive-canvas')
+            if (aywRiveCanvas) {
+              aywRiveModule.default() // initAywRiveCanvas
+              console.log('AYW Rive canvas initialized.')
+            } else {
+              console.log(
+                'No #ayw-rive-canvas found – skipping AYW Rive initialization.'
+              )
+            }
+          } else {
+            console.error(
+              'Error: initAywRiveCanvas not exported as default function or is not a function in ./features/agency/ayw/ayw-rive/ayw-rive-script.js.'
             )
           }
 

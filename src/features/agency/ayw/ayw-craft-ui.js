@@ -1,8 +1,11 @@
+import anime from 'animejs'
+
 function initAYWCraftUI() {
   class CraftUIManager {
     constructor() {
       // Cache DOM elements
       this.modal = document.querySelector('.ayw-craft-modal')
+      this.craftDetails = document.querySelector('.ayw-craft-details')
       this.gridIcons = document.querySelectorAll('.ayw-grid-icon-base')
       this.standardIcons = document.querySelectorAll('.ayw-icon-base')
       this.craftItems = document.querySelectorAll('.craft-readme-dynamic')
@@ -12,6 +15,11 @@ function initAYWCraftUI() {
       this.dynamicReadMeElements = document.querySelectorAll(
         '.ayw-dynamic-read-me.tab1'
       )
+      // Cache craft bar and radio trigger elements
+      this.dreamcastBar = document.getElementById('ayw-craft-bar-dreamcast')
+      this.initiationButton = document.getElementById('initiation-button')
+      this.dreamcasterButton = document.getElementById('dreamcaster-button')
+      this.dreamcastingButton = document.getElementById('dreamcasting-button')
 
       // Track last clicked icon
       this.lastClickedIcon = null
@@ -30,6 +38,8 @@ function initAYWCraftUI() {
       this.initializeIconStates = this.initializeIconStates.bind(this)
       this.setLevelIndicators = this.setLevelIndicators.bind(this)
       this.handleCraftSettingsUpdate = this.handleCraftSettingsUpdate.bind(this)
+      this.updateDreamcastBarVisibility =
+        this.updateDreamcastBarVisibility.bind(this)
 
       // Initialize without any classes
       this.clearIconStates()
@@ -76,6 +86,29 @@ function initAYWCraftUI() {
       this.accordionTabs.forEach((tab) => {
         tab.addEventListener('click', this.closeModal)
       })
+
+      // Wire up direct listeners to the craft radio buttons (by ID)
+      if (this.initiationButton) {
+        this.initiationButton.addEventListener('click', () => {
+          const buttonType =
+            this.initiationButton.getAttribute('data-button') || '1'
+          this.updateDreamcastBarVisibility(buttonType)
+        })
+      }
+      if (this.dreamcasterButton) {
+        this.dreamcasterButton.addEventListener('click', () => {
+          const buttonType =
+            this.dreamcasterButton.getAttribute('data-button') || '2'
+          this.updateDreamcastBarVisibility(buttonType)
+        })
+      }
+      if (this.dreamcastingButton) {
+        this.dreamcastingButton.addEventListener('click', () => {
+          const buttonType =
+            this.dreamcastingButton.getAttribute('data-button') || '2'
+          this.updateDreamcastBarVisibility(buttonType)
+        })
+      }
 
       // Close modal when clicking directly on the modal backdrop
       this.modal?.addEventListener('click', (e) => {
@@ -138,6 +171,8 @@ function initAYWCraftUI() {
         ? initialCraftRadio.closest('.ayw-radiobutt')?.dataset.button
         : '1' // Default to '1' if none checked
       this.updateIconStates(initialButtonType)
+      // Ensure craft bar visibility matches initial selection
+      this.updateDreamcastBarVisibility(initialButtonType)
       // Update levels after setting initial states
       this.gridIcons.forEach((icon) => {
         const levelName = icon.getAttribute('data-level')
@@ -255,6 +290,9 @@ function initAYWCraftUI() {
         this.modal?.classList.add('is-active')
         // When modal opens, add .off to all dynamic read-me elements
         this.dynamicReadMeElements.forEach((el) => el.classList.add('off'))
+
+        // Scroll the craft details container to the title inside the shown item
+        this.scrollCraftDetailsToItemTitle(matchingCraftItem)
       }
     }
 
@@ -383,6 +421,24 @@ function initAYWCraftUI() {
         // Pass false for isActive (hover), levels depend on buttonType now
         this.setLevelIndicators(icon, levelName, false)
       })
+
+      // 2b. Update dreamcast craft bar visibility
+      this.updateDreamcastBarVisibility(buttonType)
+
+      // 3. Reset scroll positions for the modal content and the read-me wrapper
+      this.resetCraftModalScroll()
+    }
+
+    // Toggle visibility of the Dreamcast craft bar by adding/removing .off
+    updateDreamcastBarVisibility(buttonType) {
+      if (!this.dreamcastBar) return
+      if (buttonType === '2') {
+        // Dreamcaster selected → show bar
+        this.dreamcastBar.classList.remove('off')
+        return
+      }
+      // Initiation (or anything else) selected → hide bar
+      this.dreamcastBar.classList.add('off')
     }
 
     // Method to get the currently selected 'craft' button type
@@ -419,6 +475,70 @@ function initAYWCraftUI() {
       // If none of the above conditions returned, the click was outside the modal
       // and not on a grid icon. So, close the modal.
       this.closeModal()
+    }
+
+    // --- NEW: Reset scroll positions for Craft modal and Read-Me wrapper ---
+    resetCraftModalScroll() {
+      // Prefer specifically marked custom scrollbars if present
+      const readMeWrapper =
+        document.querySelector('.ayw-read-me-wrapper.custom-scrollbar') ||
+        document.querySelector('.ayw-read-me-wrapper')
+      const craftDetails =
+        document.querySelector('.ayw-craft-details.custom-scrollbar') ||
+        this.craftDetails ||
+        document.querySelector('.ayw-craft-details')
+      const collectionListWrapper = document.querySelector(
+        '.collection-list-wrapper-16.w-dyn-list'
+      )
+
+      if (craftDetails) {
+        craftDetails.scrollTop = 0
+      }
+      if (readMeWrapper) {
+        readMeWrapper.scrollTop = 0
+      }
+      if (collectionListWrapper) {
+        collectionListWrapper.scrollTop = 0
+      }
+      if (!craftDetails && !readMeWrapper && !collectionListWrapper) {
+        console.warn(
+          'CraftUIManager: No scroll containers found to reset (craftDetails/readMeWrapper/collectionListWrapper).'
+        )
+      } else {
+        console.log(
+          'CraftUIManager: Reset scrollTop to 0 for modal/read-me containers.'
+        )
+      }
+    }
+
+    // --- NEW: Smooth scroll to the ayw-readme-title inside a craft item ---
+    scrollCraftDetailsToItemTitle(craftItem) {
+      const container =
+        document.querySelector('.ayw-craft-details.custom-scrollbar') ||
+        this.craftDetails ||
+        document.querySelector('.ayw-craft-details')
+      if (!container || !craftItem) return
+
+      const title = craftItem.querySelector('.ayw-readme-title') || craftItem
+      const containerRect = container.getBoundingClientRect()
+      const targetRect = title.getBoundingClientRect()
+      const targetTop = targetRect.top - containerRect.top + container.scrollTop
+      const rootFontSizePx =
+        parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+      const offsetPx = rootFontSizePx * 3 // 3rem offset similar to accordion behavior
+      const adjustedTop = Math.max(0, targetTop - offsetPx)
+
+      console.log('[CraftUI] Scrolling craft details to item title:', {
+        craftId: craftItem.getAttribute('data-craft'),
+        adjustedTop,
+      })
+
+      anime({
+        targets: container,
+        scrollTop: adjustedTop,
+        duration: 0,
+        easing: 'easeInOutQuad',
+      })
     }
   }
 

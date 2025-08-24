@@ -1,4 +1,7 @@
-import { handleRadioGroupVisuals } from './radio-group-handler.js'
+import {
+  handleRadioGroupVisuals,
+  handleCheckboxVisuals,
+} from './radio-group-handler.js'
 import anime from 'animejs'
 
 // We'll need access to the Accordion instance later for navigation
@@ -60,15 +63,43 @@ class DashboardController {
 
     // NEW: Cache Shaper Name Input
     this.shaperNameInput = document.getElementById('aywShaperName')
+    // NEW: Cache Shaper confirmation label and default text
+    this.summaryShaperLabel = document.getElementById('summary-shaper-label')
+    this.defaultShaperLabelText = this.summaryShaperLabel
+      ? this.summaryShaperLabel.textContent
+      : ''
 
     // NEW: Cache Project Name Input
     this.projectNameInput = document.getElementById('aywProjectName')
+    // NEW: Cache Project confirmation label and default text
+    this.summaryProjectLabel = document.getElementById('summary-project-label')
+    this.defaultProjectLabelText = this.summaryProjectLabel
+      ? this.summaryProjectLabel.textContent
+      : ''
 
     // NEW: Cache Dial Band and Form Signal elements
     this.dialBandElement =
       document.querySelector('.ayw-dialBand') ||
       document.querySelector('.ayw-dialband')
     this.formSignalElement = document.getElementById('ayw-form-signal')
+
+    // NEW: Cache checkbox wrappers for commitment/other toggles
+    this.checkboxWrappers = document.querySelectorAll(
+      '.w-checkbox.ayw-checkbox.ielo'
+    )
+
+    // NEW: Cache forms and action buttons for APPLY readiness
+    this.formsToValidate = Array.from(
+      document.querySelectorAll('#AYW-Form, [data-form="ayw"]')
+    )
+    this.actionButtons = document.querySelectorAll('.ayw-actionbutt')
+    this.applyNavButtons = document.querySelectorAll('.config-nav-action-btn')
+
+    // NEW: Cache Form Guide elements
+    this.formGuideWrap =
+      document.getElementById('form-guide-txt-wrap') ||
+      document.querySelector('.form-guide-txt-wrap')
+    this.formGuideText = document.getElementById('ayw-form-guide-txt')
 
     // --- Instance Storage ---
     // This assumes the Accordion is initialized elsewhere and we can find it if needed,
@@ -92,10 +123,137 @@ class DashboardController {
     this.handleCommitmentScroll = this.handleCommitmentScroll.bind(this)
     this.handleShaperNameInput = this.handleShaperNameInput.bind(this)
     this.handleProjectNameInput = this.handleProjectNameInput.bind(this)
+    this.evaluateFormCompletion = this.evaluateFormCompletion.bind(this)
+    this.setupFormCompletionWatcher = this.setupFormCompletionWatcher.bind(this)
 
     this.init()
   }
 
+  // --- NEW: Form Completion Watcher Setup ---
+  setupFormCompletionWatcher() {
+    if (!this.formsToValidate || this.formsToValidate.length === 0) {
+      console.warn(
+        'Dashboard Controller: No forms found for completion watching (#AYW-Form or [data-form="ayw"]).'
+      )
+      return
+    }
+
+    // Listen for changes within each form
+    this.formsToValidate.forEach((formEl) => {
+      formEl.addEventListener('input', this.evaluateFormCompletion, true)
+      formEl.addEventListener('change', this.evaluateFormCompletion, true)
+    })
+
+    // Initial evaluation
+    this.evaluateFormCompletion()
+  }
+
+  // --- NEW: Determine current pane number as string ('1'|'2'|'3') ---
+  getCurrentPaneNumber() {
+    const accordion = this.accordionInstance || window.aywAccordion
+    if (!accordion || typeof accordion.activeIndex !== 'number') return null
+    const currentItem = accordion.items?.[accordion.activeIndex]
+    if (!currentItem) return null
+    const paneEl = currentItem.querySelector('.ayw-accordion-pane')
+    const paneNumber = paneEl?.getAttribute('open-pane')
+    return paneNumber ? String(paneNumber) : null
+  }
+
+  // --- NEW: Evaluate if all required fields are complete ---
+  evaluateFormCompletion() {
+    if (!this.formsToValidate || this.formsToValidate.length === 0) return
+
+    // Gather all required fields across target forms
+    const requiredFields = this.formsToValidate.flatMap((formEl) =>
+      Array.from(formEl.querySelectorAll('[required]'))
+    )
+
+    // Determine if the devotion checkbox exists and is checked
+    const devotionCheckbox = document.querySelector(
+      '.ayw-checkbox input[type="checkbox"]'
+    )
+    const devotionExists = Boolean(devotionCheckbox)
+    const isDevotionChecked = devotionExists ? devotionCheckbox.checked : true
+
+    const isRadioGroupComplete = (input) => {
+      if (input.type !== 'radio') return true
+      const form = input.form || input.closest('form')
+      const groupSelector = `input[type="radio"][name="${CSS.escape(
+        input.name
+      )}"]`
+      const groupInputs = form
+        ? Array.from(form.querySelectorAll(groupSelector))
+        : Array.from(document.querySelectorAll(groupSelector))
+      return groupInputs.some((el) => el.checked)
+    }
+
+    const areAllRequiredValid = requiredFields.every((field) => {
+      if (field.disabled) return true
+      const tag = field.tagName.toLowerCase()
+      const type = field.type?.toLowerCase?.() || ''
+
+      if (type === 'radio') return isRadioGroupComplete(field)
+      if (type === 'checkbox') return field.checked
+
+      if (tag === 'select') return field.value !== '' && field.checkValidity()
+
+      const value = typeof field.value === 'string' ? field.value.trim() : ''
+      if (value === '') return false
+      return field.checkValidity ? field.checkValidity() : true
+    })
+
+    if (areAllRequiredValid && isDevotionChecked) {
+      // Override signal to APPLY
+      if (this.formSignalElement) {
+        this.formSignalElement.textContent = 'APPLY'
+      }
+      // Enable action buttons
+      if (this.actionButtons && this.actionButtons.length > 0) {
+        this.actionButtons.forEach((btn) => btn.classList.add('is-ready'))
+      }
+      if (this.applyNavButtons && this.applyNavButtons.length > 0) {
+        this.applyNavButtons.forEach(
+          (btn) => (btn.style.pointerEvents = 'auto')
+        )
+      }
+      // Show guide with success message if guide exists
+      if (this.formGuideWrap && this.formGuideText) {
+        this.formGuideWrap.classList.remove('non')
+        this.formGuideText.textContent = 'great! click apply to continue'
+      }
+      return
+    }
+
+    // Not complete: revert visuals
+    if (this.actionButtons && this.actionButtons.length > 0) {
+      this.actionButtons.forEach((btn) => btn.classList.remove('is-ready'))
+    }
+    if (this.applyNavButtons && this.applyNavButtons.length > 0) {
+      this.applyNavButtons.forEach((btn) => (btn.style.pointerEvents = 'none'))
+    }
+
+    // Guide visibility and prompt based on devotion checkbox state
+    if (this.formGuideWrap && this.formGuideText) {
+      if (devotionExists && isDevotionChecked && !areAllRequiredValid) {
+        this.formGuideWrap.classList.remove('non')
+        this.formGuideText.textContent =
+          'Please complete the Devotion form to continue'
+      } else if (devotionExists && !isDevotionChecked) {
+        this.formGuideWrap.classList.add('non')
+      } else if (!devotionExists) {
+        // If no devotion checkbox exists, keep guide hidden by default
+        this.formGuideWrap.classList.add('non')
+      }
+    }
+
+    // Restore the current pane number on the signal element
+    if (this.formSignalElement) {
+      const pane = this.getCurrentPaneNumber()
+      if (pane) {
+        this.formSignalElement.textContent = pane
+      }
+    }
+  }
   init() {
     if (this.radioLabels.length > 0) {
       // Use event delegation on a common ancestor if preferred, but direct listeners are okay
@@ -223,6 +381,47 @@ class DashboardController {
     // --- NEW: Initialize Commitment Scrollbar ---
     this.setupCommitmentScrollbar()
 
+    // --- NEW: Initialize Checkbox Visuals & Listeners ---
+    if (this.checkboxWrappers && this.checkboxWrappers.length > 0) {
+      this.checkboxWrappers.forEach((wrapper) => {
+        // Initial visual sync with current checked state (no toggling)
+        this.syncCheckboxWrapperVisual(wrapper)
+
+        // Prevent native input toggle and route through our visual handler
+        wrapper.addEventListener('click', (e) => {
+          // If the actual input was clicked, prevent its default toggle
+          if (e.target && e.target.matches('input[type="checkbox"]')) {
+            e.preventDefault()
+            e.stopPropagation()
+          } else {
+            e.preventDefault()
+          }
+          handleCheckboxVisuals(wrapper)
+          // Re-evaluate form completion state after checkbox visual toggle
+          this.evaluateFormCompletion()
+        })
+
+        // Keyboard accessibility: space/enter on input should toggle via handler
+        const input = wrapper.querySelector('input[type="checkbox"]')
+        if (input) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Enter') {
+              e.preventDefault()
+              handleCheckboxVisuals(wrapper)
+            }
+          })
+        }
+      })
+      console.log('Dashboard Controller: Initialized checkbox visuals.')
+    } else {
+      console.log(
+        'Dashboard Controller: No checkbox wrappers found to initialize.'
+      )
+    }
+
+    // --- NEW: Initialize Form Completion Watcher ---
+    this.setupFormCompletionWatcher()
+
     if (!this.shaperNameInput) {
       console.warn(
         'Dashboard Controller: Shaper name input field (#aywShaperName) not found. Cannot set up listener.'
@@ -240,6 +439,10 @@ class DashboardController {
 
     this.shaperNameInput.addEventListener('input', this.handleShaperNameInput)
     console.log('Dashboard Controller: Added input listener to #aywShaperName.')
+    // Initial confirmation label evaluation for shaper name
+    if (this.shaperNameInput.value && this.summaryShaperLabel) {
+      this.summaryShaperLabel.textContent = 'Shaper'
+    }
 
     // Optional: Trigger an initial update if the input field already has a value on load
     // No, wait, this should only update the summary, not price logic. Price update is in handleRadioClick.
@@ -535,6 +738,8 @@ class DashboardController {
       this.updateConfigButtonVisibility(paneNumber.toString())
       // NEW: Update dial band classes and form signal text
       this.updateDialBandAndSignal(paneNumber.toString())
+      // NEW: Re-evaluate form completion to potentially override signal with APPLY
+      this.evaluateFormCompletion()
     } else {
       console.warn(
         'Dashboard Controller: accordionItemOpened event missing paneNumber detail.',
@@ -768,6 +973,22 @@ class DashboardController {
   }
   // --- End NEW Methods ---
 
+  // --- NEW: Sync checkbox wrapper visuals without changing checked state ---
+  syncCheckboxWrapperVisual(wrapper) {
+    if (!wrapper) return
+    const checkboxInput = wrapper.querySelector('input[type="checkbox"]')
+    if (!checkboxInput) return
+    const webflowInput = wrapper.querySelector('.w-checkbox-input')
+
+    if (checkboxInput.checked) {
+      wrapper.classList.add('is-pressed')
+      if (webflowInput) webflowInput.classList.add('w--redirected-checked')
+    } else {
+      wrapper.classList.remove('is-pressed')
+      if (webflowInput) webflowInput.classList.remove('w--redirected-checked')
+    }
+  }
+
   // --- NEW Method to Setup Project Name Listener ---
   setupProjectNameListener() {
     if (!this.projectNameInput) {
@@ -794,6 +1015,10 @@ class DashboardController {
     if (this.projectNameInput.value && this.summaries.projectName) {
       this.handleProjectNameInput({ target: this.projectNameInput })
     }
+    // Initial confirmation label evaluation for project name
+    if (this.projectNameInput.value && this.summaryProjectLabel) {
+      this.summaryProjectLabel.textContent = 'Project/Brand'
+    }
   }
 
   // NEW: Handler for the shaper name input field
@@ -802,6 +1027,16 @@ class DashboardController {
     if (this.summaries.shaper) {
       this.summaries.shaper.textContent = event.target.value
     }
+    // Re-evaluate completion when shaper name changes
+    this.evaluateFormCompletion()
+
+    // Update confirmation label based on content
+    if (this.summaryShaperLabel) {
+      const value = (event.target.value || '').trim()
+      this.summaryShaperLabel.textContent = value
+        ? 'Shaper'
+        : this.defaultShaperLabelText
+    }
   }
 
   // NEW: Handler for the project name input field
@@ -809,6 +1044,16 @@ class DashboardController {
     // Use optional chaining for safety if projectNameSummary might be null
     if (this.summaries.projectName) {
       this.summaries.projectName.textContent = event.target.value
+    }
+    // Re-evaluate completion when project name changes
+    this.evaluateFormCompletion()
+
+    // Update confirmation label based on content
+    if (this.summaryProjectLabel) {
+      const value = (event.target.value || '').trim()
+      this.summaryProjectLabel.textContent = value
+        ? 'Project/Brand'
+        : this.defaultProjectLabelText
     }
   }
 }

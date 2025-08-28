@@ -243,3 +243,25 @@ body::selection {
   color: #eaff36 !important;
   background-color: #484f4f !important;
 }
+
+/* Tippy Tooltip Custom Styling */
+.tippy-box[data-theme~='ayw'] {
+  width: 9rem;
+  background-color: #484f4f;
+  padding: 0.5rem;
+}
+
+.tippy-box[data-theme~='ayw'] .tippy-content {
+  color: #eaff36;
+  font-family: 'Andale Mono', 'AndaleMono', 'Liberation Mono',
+    'DejaVu Sans Mono', monospace;
+  font-size: 0.6rem;
+  line-height: 0.8rem;
+  padding: 0;
+  margin: 0;
+}
+
+/* SVG Arrow styling for tippy.js scoped to theme */
+.tippy-box[data-theme~='ayw'] > .tippy-svg-arrow {
+  fill: #484f4f;
+}

@@ -3,6 +3,10 @@ import {
   handleCheckboxVisuals,
 } from './radio-group-handler.js'
 import anime from 'animejs'
+import tippy from 'tippy.js'
+import { roundArrow } from 'tippy.js'
+import 'tippy.js/dist/svg-arrow.css'
+import 'tippy.js/animations/shift-away.css'
 
 // We'll need access to the Accordion instance later for navigation
 // Assuming Accordion class is exported from accordion.js
@@ -459,6 +463,9 @@ class DashboardController {
     console.log(
       'Dashboard Controller: Initial setup complete, default radio clicks handle initial price display.'
     )
+
+    // --- Initialize Custom Tooltips ---
+    this.initializeTooltips()
   }
 
   // NEW: Sets the initial visible config button wrapper without animation
@@ -1055,6 +1062,39 @@ class DashboardController {
         ? 'Project/Brand'
         : this.defaultProjectLabelText
     }
+  }
+
+  // --- Initialize Custom Tooltips ---
+  initializeTooltips() {
+    // Check if tooltip element exists
+    const tooltipElement = document.getElementById('cursor-tooltip')
+    if (!tooltipElement) {
+      console.warn(
+        'Dashboard Controller: #cursor-tooltip element not found. Tooltips will not be initialized.'
+      )
+      return
+    }
+
+    // Initialize tippy.js for all elements with data-tooltip attribute
+    tippy('[data-tooltip]', {
+      content(reference) {
+        return reference.getAttribute('data-tooltip')
+      },
+      followCursor: true,
+      offset: [10, 10],
+      placement: 'left',
+      arrow: roundArrow,
+      theme: 'ayw',
+      animation: 'shift-away',
+      duration: 111,
+      trigger: 'mouseenter',
+      hideOnClick: false,
+      showOnCreate: false,
+    })
+
+    console.log(
+      'Dashboard Controller: Tooltips initialized for elements with data-tooltip attribute.'
+    )
   }
 }
 

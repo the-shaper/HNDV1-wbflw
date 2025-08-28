@@ -27,6 +27,7 @@
     "animejs": "^3.2.2",
     "gsap": "^3.12.5",
     "three": "^0.175.0",
-    "three.meshline": "^1.4.0"
+    "three.meshline": "^1.4.0",
+    "tippy.js": "^6.3.7"
   }
 }

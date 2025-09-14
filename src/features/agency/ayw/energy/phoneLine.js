@@ -9,19 +9,27 @@
   // --- Mode-Specific Configurations ---
   const modeConfigs = {
     A: {
-      lineThickness: 3,
+      lineThickness: 2.5,
       lineColor: '#FF3C23',
-      waveAmplitude: 9,
-      spatialFrequency: 3,
+      waveAmplitude: 6,
+      spatialFrequency: 1,
       animationSpeed: 0.025,
+      waveDirection: 1, // Positive = right, negative = left
+      boundaryWidth: 0.35, // 15% of canvas width for boundary damping zone
+      boundaryDamping: 1.0, // Full damping factor (0 = no wave, 1 = full wave)
+      extendContainer: false, // Whether to add .extend class to container
     },
     B: {
       // Example values for Mode B - please customize
-      lineThickness: 2,
+      lineThickness: 2.5,
       lineColor: '#0189d7',
-      waveAmplitude: 16,
-      spatialFrequency: 6,
-      animationSpeed: 0.06,
+      waveAmplitude: 9,
+      spatialFrequency: 3,
+      animationSpeed: 0.069,
+      waveDirection: 1, // Positive = right, negative = left
+      boundaryWidth: 0.35, // 25% of canvas width for boundary damping zone
+      boundaryDamping: 1, // Slightly reduced damping for different visual effect
+      extendContainer: true, // Whether to add .extend class to container
     },
   }
 
@@ -91,17 +99,40 @@
       // 2 * Math.PI makes it a full cycle for frequency = 1
       const spatialAngle =
         (x / logicalWidth) * config.spatialFrequency * 2 * Math.PI
-      const spatialComponent = Math.sin(spatialAngle) // Sinusoidal shape along x-axis
 
-      // temporalComponent makes the wave animate over time
-      const temporalComponent = Math.cos(phase) // Cosine variation for standing wave
+      // Create traveling wave by adding phase to spatial angle
+      // waveDirection controls direction: positive = right, negative = left
+      const travelingWave = Math.sin(
+        spatialAngle + phase * config.waveDirection
+      )
+
+      // Apply boundary damping to ensure smooth transition to centerY at edges
+      // This creates a smooth fade to zero amplitude near the boundaries
+      const normalizedX = x / logicalWidth
+      let boundaryDampingFactor = 1
+
+      if (normalizedX < config.boundaryWidth) {
+        // Fade in from left edge
+        boundaryDampingFactor =
+          (normalizedX / config.boundaryWidth) * config.boundaryDamping
+      } else if (normalizedX > 1 - config.boundaryWidth) {
+        // Fade out to right edge
+        boundaryDampingFactor =
+          ((1 - normalizedX) / config.boundaryWidth) * config.boundaryDamping
+      } else {
+        // Full amplitude in the middle section
+        boundaryDampingFactor = config.boundaryDamping
+      }
+
+      // Clamp damping factor to 0-1 range
+      boundaryDampingFactor = Math.max(0, Math.min(1, boundaryDampingFactor))
 
       const y =
-        centerY + config.waveAmplitude * spatialComponent * temporalComponent
+        centerY + config.waveAmplitude * travelingWave * boundaryDampingFactor
       ctx.lineTo(x, y)
     }
 
-    // Pin the end of the wave to the vertical center
+    // Pin the end of the wave to the vertical center (absolutely guaranteed)
     ctx.lineTo(logicalWidth, centerY)
 
     // Stroke the path
@@ -176,6 +207,10 @@
       'waveAmplitude',
       'spatialFrequency',
       'animationSpeed',
+      'waveDirection',
+      'boundaryWidth',
+      'boundaryDamping',
+      'extendContainer',
     ]
 
     if (!validParameters.includes(parameterName)) {
@@ -185,12 +220,31 @@
 
     config[parameterName] = value
 
+    // Handle special parameters that require immediate DOM updates
+    if (parameterName === 'extendContainer') {
+      updateContainerExtension(value)
+    }
+
     // If the wave is paused, redraw to reflect the parameter change immediately
     if (!isPlaying) {
       drawWave()
     }
     // If playing, the animation loop will pick up the new parameter value on the next frame.
     // For canvasHeight, drawWave itself handles applying the new height.
+  }
+
+  /**
+   * Updates the container's extension class based on the extendContainer parameter.
+   * @param {boolean} shouldExtend - Whether to add or remove the .extend class
+   */
+  function updateContainerExtension(shouldExtend) {
+    if (!parentElement) return
+
+    if (shouldExtend) {
+      parentElement.classList.add('extend')
+    } else {
+      parentElement.classList.remove('extend')
+    }
   }
 
   /**
@@ -206,6 +260,9 @@
 
     // Update the main config object with all parameters from the selected mode
     Object.assign(config, newModeConfig)
+
+    // Handle container extension for the new mode
+    updateContainerExtension(config.extendContainer)
 
     if (!isPlaying) {
       drawWave() // Redraw if paused to show changes immediately
@@ -283,6 +340,9 @@
         }
       })
     })
+
+    // Apply initial container extension setting
+    updateContainerExtension(config.extendContainer)
 
     // Initial draw (happens regardless of play state)
     drawWave()

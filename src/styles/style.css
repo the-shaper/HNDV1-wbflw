@@ -265,3 +265,10 @@ body::selection {
 .tippy-box[data-theme~='ayw'] > .tippy-svg-arrow {
   fill: #484f4f;
 }
+
+.ayw-phone-line-size-wrap {
+  /* Your existing styles */
+  transition: min-width 0.3s ease-in-out;
+  /* OR for more control: */
+  transition: min-width var(--transition-duration, 0.1s) ease-in-out;
+}

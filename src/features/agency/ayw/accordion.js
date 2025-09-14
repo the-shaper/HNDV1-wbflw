@@ -68,6 +68,22 @@ function initAccordionAYW() {
       }
       this.boundTab2Handlers = new Map()
       this.tab2Scroll = { ...TAB2_SCROLL_CONFIG }
+
+      // Link-to-anchor mapping for Tab 3
+      this.tab3LinkHandlersAttached = false
+      this.tab3LinkIdToAnchorId = {
+        'pow-checks': 'pow-anc',
+      }
+      // Preferred display texts for anchors found inside Rich Text (case-insensitive)
+      this.tab3AnchorTextById = {
+        'pow-anc': 'Power',
+      }
+      // Keyword fallbacks to match even if copy or punctuation varies slightly
+      this.tab3AnchorKeywordsById = {
+        'pow-anc': ['power'],
+      }
+      this.boundTab3Handlers = new Map()
+      this.tab3Scroll = { ...TAB2_SCROLL_CONFIG }
       this.activeIndex = 0 // Track active index
       this.init()
     }
@@ -115,12 +131,23 @@ function initAccordionAYW() {
         }
       }
 
-      // Attach/detach Tab 2 link handlers based on active tab
+      // Attach/detach Tab 1, 2, and 3 link handlers based on active tab
       const activeTabStr = String(targetTab)
       console.log(
         '[Accordion] updateDynamicElements -> activeTab:',
         activeTabStr
       )
+
+      // Tab 1 handlers
+      if (activeTabStr === '1') {
+        console.log('[Accordion] Activating Tab 1 link handlers...')
+        this.attachTab1LinkHandlers()
+      } else {
+        console.log('[Accordion] Deactivating Tab 1 link handlers...')
+        this.detachTab1LinkHandlers()
+      }
+
+      // Tab 2 handlers
       if (activeTabStr === '2') {
         console.log('[Accordion] Activating Tab 2 link handlers...')
         this.attachTab2LinkHandlers()
@@ -128,12 +155,14 @@ function initAccordionAYW() {
         console.log('[Accordion] Deactivating Tab 2 link handlers...')
         this.detachTab2LinkHandlers()
       }
-      if (activeTabStr === '1') {
-        console.log('[Accordion] Activating Tab 1 link handlers...')
-        this.attachTab1LinkHandlers()
+
+      // Tab 3 handlers
+      if (activeTabStr === '3') {
+        console.log('[Accordion] Activating Tab 3 link handlers...')
+        this.attachTab3LinkHandlers()
       } else {
-        console.log('[Accordion] Deactivating Tab 1 link handlers...')
-        this.detachTab1LinkHandlers()
+        console.log('[Accordion] Deactivating Tab 3 link handlers...')
+        this.detachTab3LinkHandlers()
       }
 
       // Reset scroll position to top for the read-me area on every tab change
@@ -355,6 +384,30 @@ function initAccordionAYW() {
       return tab1
     }
 
+    getTab3Container() {
+      // Prefer main scroll wrapper if available
+      const mainWrapper = document.querySelector(
+        '.ayw-read-me-wrapper.custom-scrollbar'
+      )
+      if (mainWrapper) {
+        console.log(
+          '[Accordion] Using main scroll container .ayw-read-me-wrapper.custom-scrollbar for Tab 3'
+        )
+        return mainWrapper
+      }
+      const tab3 =
+        this.dynamicElements.tab3 ||
+        document.querySelector('.ayw-dynamic-read-me.tab3')
+      if (tab3) {
+        console.log(
+          '[Accordion] Using fallback container .ayw-dynamic-read-me.tab3'
+        )
+      } else {
+        console.warn('[Accordion] No Tab 3 container found.')
+      }
+      return tab3
+    }
+
     scrollToAnchor(container, target) {
       if (!container || !target) return
       const containerRect = container.getBoundingClientRect()
@@ -539,6 +592,103 @@ function initAccordionAYW() {
     }
     // --- End Tab 1 Link → Anchor Support ---
 
+    // --- Tab 3 Link → Anchor Support ---
+    ensureTab3Anchors(container) {
+      const tab3Root =
+        container.querySelector('.ayw-dynamic-read-me.tab3') || container
+      const headings = Array.from(tab3Root.querySelectorAll('h3'))
+      if (headings.length === 0) return
+      console.log('[Accordion] Tab 3 headings found:', headings.length)
+
+      Object.entries(this.tab3AnchorTextById).forEach(
+        ([anchorId, displayText]) => {
+          if (tab3Root.querySelector(`#${anchorId}`)) return
+          const exact = headings.find(
+            (h) =>
+              this.normalizeText(h.textContent) ===
+              this.normalizeText(displayText)
+          )
+          if (exact) {
+            exact.id = anchorId
+            console.log(
+              `[Accordion] (Tab 3) Assigned ID via exact text: #${anchorId} -> "${displayText}"`
+            )
+          }
+        }
+      )
+    }
+
+    findTab3AnchorElement(container, anchorId) {
+      const tab3Root =
+        container.querySelector('.ayw-dynamic-read-me.tab3') || container
+      const byId = tab3Root.querySelector(`#${anchorId}`)
+      if (byId) return byId
+      const headings = Array.from(tab3Root.querySelectorAll('h3'))
+      if (headings.length === 0) return null
+      const displayText = this.tab3AnchorTextById[anchorId]
+      if (displayText) {
+        const exact = headings.find(
+          (h) =>
+            this.normalizeText(h.textContent) ===
+            this.normalizeText(displayText)
+        )
+        if (exact) {
+          exact.id = anchorId
+          console.log(
+            `[Accordion] (Tab 3) Found anchor by exact text and assigned ID: #${anchorId}`
+          )
+          return exact
+        }
+      }
+      console.warn('[Accordion] (Tab 3) Could not resolve anchor element', {
+        anchorId,
+        displayText,
+      })
+      return null
+    }
+
+    attachTab3LinkHandlers() {
+      if (this.tab3LinkHandlersAttached) return
+      const container = this.getTab3Container()
+      if (!container) return
+      this.ensureTab3Anchors(container)
+
+      console.log('[Accordion] Attaching Tab 3 link handlers...')
+      const mappingEntries = Object.entries(this.tab3LinkIdToAnchorId)
+      mappingEntries.forEach(([linkId, anchorId]) => {
+        const linkEl = document.getElementById(linkId)
+        if (!linkEl) {
+          console.warn(`[Accordion] (Tab 3) Link element not found: #${linkId}`)
+          return
+        }
+        const handler = (event) => {
+          event.preventDefault()
+          // Ensure Tab 3 is open
+          this.openByIndex(2, true)
+          const target = this.findTab3AnchorElement(container, anchorId)
+          if (!target) return
+          this.scrollToAnchor(container, target)
+        }
+        linkEl.addEventListener('click', handler)
+        this.boundTab3Handlers.set(linkId, handler)
+      })
+      this.tab3LinkHandlersAttached = true
+      console.log('[Accordion] Tab 3 link handlers attached.')
+    }
+
+    detachTab3LinkHandlers() {
+      if (!this.tab3LinkHandlersAttached) return
+      console.log('[Accordion] Detaching Tab 3 link handlers...')
+      this.boundTab3Handlers.forEach((handler, linkId) => {
+        const linkEl = document.getElementById(linkId)
+        if (linkEl) linkEl.removeEventListener('click', handler)
+      })
+      this.boundTab3Handlers.clear()
+      this.tab3LinkHandlersAttached = false
+      console.log('[Accordion] Tab 3 link handlers detached.')
+    }
+    // --- End Tab 3 Link → Anchor Support ---
+
     // --- Utilities for Rich Text Anchors (Tab 2) ---
     normalizeText(str) {
       return (str || '')
@@ -665,6 +815,18 @@ function initAccordionAYW() {
       }
       console.log('[Accordion] Updated Tab 2 scroll options:', this.tab2Scroll)
     }
+
+    setTab3ScrollOptions(options) {
+      if (!options || typeof options !== 'object') return
+      const { durationMs, easing } = options
+      if (typeof durationMs === 'number' && durationMs >= 0) {
+        this.tab3Scroll.durationMs = durationMs
+      }
+      if (typeof easing === 'string' && easing.trim()) {
+        this.tab3Scroll.easing = easing
+      }
+      console.log('[Accordion] Updated Tab 3 scroll options:', this.tab3Scroll)
+    }
     // --- End Public API ---
   }
 
@@ -675,6 +837,8 @@ function initAccordionAYW() {
     // Expose minimal API for tuning from console or other modules
     window.aywAccordionSetTab2Scroll = (opts) =>
       instance.setTab2ScrollOptions(opts)
+    window.aywAccordionSetTab3Scroll = (opts) =>
+      instance.setTab3ScrollOptions(opts)
     if (accordions.length > 1) {
       console.warn(
         'Multiple .ayw-accordion-wrapper elements found. Only initializing the first one for navigation control.'

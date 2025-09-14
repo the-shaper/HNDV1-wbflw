@@ -92,6 +92,18 @@ class DashboardController {
       '.w-checkbox.ayw-checkbox.ielo'
     )
 
+    // NEW: Cache POW elements
+    this.powCheckout = document.getElementById('pow-checkout')
+    this.powText = document.getElementById('data-pow-txt')
+    // Find the actual input element (this is the hidden input with id="pow-check")
+    this.powInput = document.getElementById('pow-check')
+    // Find the visual checkbox element (the div with class "pow-checkbox")
+    this.powCheckboxVisual = document.querySelector('.pow-checkbox')
+    // Find the wrapper that contains everything (the label element)
+    this.powCheckboxWrapper =
+      this.powInput?.closest('.w-checkbox') ||
+      this.powCheckboxVisual?.closest('.w-checkbox')
+
     // NEW: Cache forms and action buttons for APPLY readiness
     this.formsToValidate = Array.from(
       document.querySelectorAll('#AYW-Form, [data-form="ayw"]')
@@ -129,6 +141,9 @@ class DashboardController {
     this.handleProjectNameInput = this.handleProjectNameInput.bind(this)
     this.evaluateFormCompletion = this.evaluateFormCompletion.bind(this)
     this.setupFormCompletionWatcher = this.setupFormCompletionWatcher.bind(this)
+    // --- NEW: Bind POW Event Handlers ---
+    this.handlePowButtonClick = this.handlePowButtonClick.bind(this)
+    this.handlePowCheckboxChange = this.handlePowCheckboxChange.bind(this)
 
     this.init()
   }
@@ -425,6 +440,9 @@ class DashboardController {
 
     // --- NEW: Initialize Form Completion Watcher ---
     this.setupFormCompletionWatcher()
+
+    // --- NEW: Initialize POW Toggle Listeners ---
+    this.setupPowListeners()
 
     if (!this.shaperNameInput) {
       console.warn(
@@ -994,6 +1012,103 @@ class DashboardController {
       wrapper.classList.remove('is-pressed')
       if (webflowInput) webflowInput.classList.remove('w--redirected-checked')
     }
+  }
+
+  // --- NEW: Handle POW button click (simulate checkbox click) ---
+  handlePowButtonClick(event) {
+    if (!this.powInput) {
+      console.warn(
+        'Dashboard Controller: POW input not found for button click.'
+      )
+      return
+    }
+
+    console.log(
+      'Dashboard Controller: POW button clicked - simulating checkbox click'
+    )
+
+    // Simply simulate a click on the actual checkbox input
+    // This lets Webflow handle all the visual state changes naturally
+    this.powInput.click()
+
+    console.log('Dashboard Controller: Simulated click on checkbox input')
+  }
+
+  // --- NEW: Handle checkbox state changes (update button text and classes) ---
+  handlePowCheckboxChange(event) {
+    if (!this.powText || !this.powCheckout) {
+      console.warn(
+        'Dashboard Controller: POW text or checkout elements not found for state update.'
+      )
+      return
+    }
+
+    const isChecked = event.target.checked
+    console.log('Dashboard Controller: POW checkbox state changed:', isChecked)
+
+    if (isChecked) {
+      // POW enabled
+      this.powText.setAttribute('data-pow', 'POW! Enabled')
+      this.powText.textContent = '"POW!" Enabled'
+      this.powCheckout.classList.add('enabled')
+      console.log('Dashboard Controller: POW enabled - text and class updated')
+    } else {
+      // POW disabled
+      this.powText.setAttribute('data-pow', 'POW! Disabled')
+      this.powText.textContent = 'Enable "POW!"'
+      this.powCheckout.classList.remove('enabled')
+      console.log('Dashboard Controller: POW disabled - text and class updated')
+    }
+
+    // Re-evaluate form completion state after checkbox change
+    this.evaluateFormCompletion()
+  }
+
+  // --- NEW: Setup POW Toggle Listeners ---
+  setupPowListeners() {
+    if (!this.powCheckout || !this.powInput || !this.powText) {
+      console.warn(
+        'Dashboard Controller: POW elements (#pow-checkout, input, #data-pow-txt) not found. Cannot set up POW listeners.'
+      )
+      return
+    }
+
+    console.log('Dashboard Controller: Setting up POW listeners...')
+
+    // 1. Listen to checkbox changes and update button text accordingly
+    this.powInput.addEventListener('change', this.handlePowCheckboxChange)
+    console.log(
+      'Dashboard Controller: Added change listener to POW checkbox input.'
+    )
+
+    // 2. Make button click simulate a checkbox click
+    this.powCheckout.addEventListener('click', this.handlePowButtonClick)
+    console.log(
+      'Dashboard Controller: Added click listener to #pow-checkout button.'
+    )
+
+    // 3. Set initial button text based on current checkbox state
+    console.log(
+      'Dashboard Controller: Initial setup - Found actual input:',
+      this.powInput
+    )
+    console.log(
+      'Dashboard Controller: Initial input checked state:',
+      this.powInput?.checked
+    )
+
+    // Trigger initial text update based on current state
+    if (this.powInput) {
+      const initialEvent = { target: { checked: this.powInput.checked } }
+      this.handlePowCheckboxChange(initialEvent)
+      console.log(
+        'Dashboard Controller: Initial text state set based on checkbox'
+      )
+    }
+
+    console.log(
+      'Dashboard Controller: POW listeners initialized - letting Webflow handle checkbox visuals!'
+    )
   }
 
   // --- NEW Method to Setup Project Name Listener ---

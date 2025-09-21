@@ -10,7 +10,7 @@ function initAgencyTabs() {
     if (!targetElement) return
 
     const finalText = options.text ?? targetElement.textContent ?? ''
-    const duration = options.duration ?? 1.2
+    const duration = options.duration ?? 2
     const characters = options.chars ?? 'TWILIGHTFRINGE'
     const preserveSpaces = options.preserveSpaces ?? true
     const onComplete =
@@ -66,8 +66,8 @@ function initAgencyTabs() {
   function blinkElement(targetElement, options = {}) {
     if (!targetElement) return
 
-    const blinks = Math.max(1, options.blinks ?? 2)
-    const halfDuration = options.durationPerHalf ?? 0.26
+    const blinks = Math.max(1, options.blinks ?? 3)
+    const halfDuration = options.durationPerHalf ?? 1
 
     // Kill previous blink on this element, if any
     const previous = activeBlinkByElement.get(targetElement)

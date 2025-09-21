@@ -16,18 +16,22 @@ export default defineConfig({
   build: {
     minify: true,
     manifest: true,
+    lib: {
+      entry: path.resolve(__dirname, 'src/main.js'),
+      name: 'Main',
+      formats: ['umd'],
+      fileName: () => 'main.js',
+    },
     rollupOptions: {
-      input: './src/main.js',
+      external: ['jquery'],
       output: {
-        format: 'umd',
-        entryFileNames: 'main.js',
-        esModule: false,
-        compact: true,
         globals: {
           jquery: '$',
         },
+        inlineDynamicImports: true,
+        esModule: false,
+        compact: true,
       },
-      external: ['jquery'],
     },
   },
   resolve: {

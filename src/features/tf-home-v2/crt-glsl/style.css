@@ -1,0 +1,226 @@
+/* CRT GLSL Test Styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  background-color: #0a0a0a;
+  color: #e0e0e0;
+}
+
+#container {
+  width: 90%;
+  max-width: 1400px;
+  min-height: 80vh;
+  display: flex;
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  border: 1px solid #333;
+}
+
+#controls {
+  flex-shrink: 0;
+  width: 300px;
+  height: 100%;
+  padding: 20px;
+  background-color: #2a2a2a;
+  border-right: 1px solid #404040;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+#controls h2 {
+  margin: 0 0 20px 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#controls h3 {
+  margin: 0 0 15px 0;
+  color: #ccc;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.control-group {
+  margin-bottom: 25px;
+}
+
+.control-group:last-child {
+  margin-bottom: 0;
+}
+
+#controls label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #ccc;
+  font-size: 12px;
+}
+
+#controls input[type='range'] {
+  width: 100%;
+  height: 6px;
+  margin-bottom: 15px;
+  background: #404040;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#controls input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #4a90e2;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+#controls input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #4a90e2;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+#controls button {
+  background-color: #4a90e2;
+  color: white;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12px;
+  transition: background-color 0.2s ease;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+#controls button:hover {
+  background-color: #357abd;
+}
+
+#controls button:last-child {
+  margin-bottom: 0;
+}
+
+.status {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #404040;
+  font-size: 11px;
+  color: #888;
+}
+
+.status p {
+  margin: 0 0 5px 0;
+}
+
+.status span {
+  color: #4a90e2;
+  font-weight: 500;
+}
+
+/* Canvas pane sits next to controls */
+#canvasPane {
+  flex: 1 1 auto;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  max-width: 100%;
+  height: 60vh; /* default; adjustable via UI */
+  min-height: 300px;
+}
+
+/* Canvas styling: fill pane */
+#canvasPane canvas {
+  display: block;
+  flex-grow: 1;
+  background-color: transparent;
+  border: none;
+  outline: none;
+  position: relative;
+  pointer-events: auto;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  #container {
+    flex-direction: column;
+    width: 95%;
+    max-height: 90vh;
+  }
+
+  #controls {
+    width: 100%;
+    max-height: 40vh;
+    border-right: none;
+    border-bottom: 1px solid #404040;
+  }
+
+  #container canvas {
+    height: 60vh;
+    min-height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  #container {
+    width: 98%;
+    border-radius: 8px;
+  }
+
+  #controls {
+    padding: 15px;
+    font-size: 12px;
+  }
+
+  #controls h2 {
+    font-size: 16px;
+  }
+
+  #controls h3 {
+    font-size: 13px;
+  }
+}
+
+/* Custom scrollbar for controls */
+#controls::-webkit-scrollbar {
+  width: 8px;
+}
+
+#controls::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+
+#controls::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+#controls::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}

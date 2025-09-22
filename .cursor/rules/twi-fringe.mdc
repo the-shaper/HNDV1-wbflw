@@ -1,0 +1,9 @@
+---
+description: Development environment
+alwaysApply: false
+---
+
+This project runs on a vite-based node server. My workflow is to 'npm run dev' every time I open this codebase.
+This means that you keep in mind that whenever we implement a new function, snippet, page, etc. The server will already be running and you don't need to re-run it.
+This also means that you will avoid at all costs to automatically create new live server or development environments such as python or any other thing.
+Whenever there is a need to reset the server, you will inform me first, and you won't act upon it without asking.

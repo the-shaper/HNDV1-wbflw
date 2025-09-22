@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRT GLSL Intro Test</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="container">
+      <!-- Controls Panel -->
+      <div id="controls">
+        <h2>CRT GLSL Controls</h2>
+
+        <!-- Timing Controls -->
+        <div class="control-group">
+          <h3>Timing (ms)</h3>
+
+          <label>Dot Duration: <span id="dotDurationValue">120</span>ms</label>
+          <input
+            type="range"
+            id="dotDuration"
+            min="10"
+            max="2000"
+            step="10"
+            value="120"
+          />
+
+          <label
+            >Squish Duration: <span id="squishDurationValue">160</span>ms</label
+          >
+          <input
+            type="range"
+            id="squishDuration"
+            min="10"
+            max="2000"
+            step="10"
+            value="160"
+          />
+
+          <label
+            >Line Hold Duration:
+            <span id="lineHoldDurationValue">0</span>ms</label
+          >
+          <input
+            type="range"
+            id="lineHoldDuration"
+            min="0"
+            max="1500"
+            step="10"
+            value="0"
+          />
+
+          <label
+            >Anticipation Duration:
+            <span id="anticipationDurationValue">140</span>ms</label
+          >
+          <input
+            type="range"
+            id="anticipationDuration"
+            min="0"
+            max="2000"
+            step="10"
+            value="140"
+          />
+
+          <label
+            >Anticipation Recoil:
+            <span id="anticipationRecoilDurationValue">120</span>ms</label
+          >
+          <input
+            type="range"
+            id="anticipationRecoilDuration"
+            min="0"
+            max="2000"
+            step="10"
+            value="120"
+          />
+
+          <label
+            >Horizontal Duration:
+            <span id="horizontalDurationValue">260</span>ms</label
+          >
+          <input
+            type="range"
+            id="horizontalDuration"
+            min="10"
+            max="4000"
+            step="10"
+            value="260"
+          />
+
+          <label
+            >Vertical Duration:
+            <span id="verticalDurationValue">111</span>ms</label
+          >
+          <input
+            type="range"
+            id="verticalDuration"
+            min="10"
+            max="4000"
+            step="10"
+            value="111"
+          />
+
+          <label
+            >Final Fade Duration:
+            <span id="finalFadeDurationValue">420</span>ms</label
+          >
+          <input
+            type="range"
+            id="finalFadeDuration"
+            min="100"
+            max="2000"
+            step="10"
+            value="420"
+          />
+        </div>
+
+        <!-- Visual Controls -->
+        <div class="control-group">
+          <h3>Visual Settings</h3>
+
+          <label
+            >Anticipation Stretch (px):
+            <span id="anticipationStretchPxValue">6</span></label
+          >
+          <input
+            type="range"
+            id="anticipationStretchPx"
+            min="0"
+            max="200"
+            step="1"
+            value="6"
+          />
+
+          <label>Min RY (line thinness): <span id="minRyValue">1</span></label>
+          <input type="range" id="minRy" min="0" max="24" step="1" value="1" />
+
+          <label>Flash Opacity: <span id="flashOpacityValue">0.90</span></label>
+          <input
+            type="range"
+            id="flashOpacity"
+            min="0"
+            max="1"
+            step="0.05"
+            value="0.9"
+          />
+
+          <label>Glow Opacity: <span id="glowOpacityValue">0.45</span></label>
+          <input
+            type="range"
+            id="glowOpacity"
+            min="0"
+            max="1"
+            step="0.05"
+            value="0.45"
+          />
+
+          <label>Glow Strength: <span id="glowStrengthValue">1.0</span></label>
+          <input
+            type="range"
+            id="glowStrength"
+            min="0"
+            max="3"
+            step="0.1"
+            value="1.0"
+          />
+
+          <label
+            >Canvas Scale: <span id="canvasScaleValue">1.0</span> (keep at 1.0
+            for proper positioning)</label
+          >
+          <input
+            type="range"
+            id="canvasScale"
+            min="0.5"
+            max="2.0"
+            step="0.05"
+            value="1.0"
+          />
+        </div>
+
+        <!-- Position Controls for Debugging -->
+        <div class="control-group">
+          <h3>Position Debug (for troubleshooting)</h3>
+
+          <label>Center X: <span id="centerXValue">0.50</span></label>
+          <input
+            type="range"
+            id="centerX"
+            min="0.0"
+            max="1.0"
+            step="0.01"
+            value="0.5"
+          />
+
+          <label>Center Y: <span id="centerYValue">0.50</span></label>
+          <input
+            type="range"
+            id="centerY"
+            min="0.0"
+            max="1.0"
+            step="0.01"
+            value="0.5"
+          />
+
+          <button id="resetPosition">Reset Position to Center</button>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="control-group">
+          <button id="restartAnimation">Restart Animation</button>
+          <button id="resetDefaults">Reset to Defaults</button>
+        </div>
+
+        <!-- Canvas Box Controls -->
+        <div class="control-group">
+          <h3>Canvas Box</h3>
+          <label
+            >Width (% of container):
+            <span id="canvasWidthPctValue">100</span>%</label
+          >
+          <input
+            type="range"
+            id="canvasWidthPct"
+            min="30"
+            max="100"
+            step="1"
+            value="100"
+          />
+
+          <label>Height (vh): <span id="canvasHeightVhValue">60</span>vh</label>
+          <input
+            type="range"
+            id="canvasHeightVh"
+            min="30"
+            max="100"
+            step="1"
+            value="60"
+          />
+
+          <label style="display: flex; align-items: center; gap: 8px">
+            <input type="checkbox" id="lockAspect" checked /> Lock 16:9
+          </label>
+        </div>
+
+        <!-- Background -->
+        <div class="control-group">
+          <h3>Background</h3>
+          <label>Background Color (hex)</label>
+          <input
+            type="text"
+            id="backgroundColorHex"
+            value="#1A1515"
+            placeholder="#1A1515"
+          />
+          <button id="applyBg">Apply Background</button>
+        </div>
+
+        <!-- Status -->
+        <div
+          class="status"
+          style="
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #404040;
+          "
+        >
+          <p>Status: <span id="statusText">Initializing...</span></p>
+          <p>Animation: <span id="animationStatus">Stopped</span></p>
+        </div>
+      </div>
+
+      <!-- Canvas Pane + Canvas -->
+      <div id="canvasPane">
+        <canvas id="crtCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- Add Three.js importmap for the test file -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import { initializeCrtGlsl, updateCrtGlsl } from './crt-glsl.js'
+
+      // Initialize when DOM is ready
+      document.addEventListener('DOMContentLoaded', () => {
+        // Initialize the CRT system
+        initializeCrtGlsl({
+          containerSelector: '#container',
+        })
+
+        // Setup control listeners
+        setupControls()
+      })
+
+      function setupControls() {
+        const controls = {
+          dotDuration: document.getElementById('dotDuration'),
+          squishDuration: document.getElementById('squishDuration'),
+          lineHoldDuration: document.getElementById('lineHoldDuration'),
+          anticipationDuration: document.getElementById('anticipationDuration'),
+          anticipationRecoilDuration: document.getElementById(
+            'anticipationRecoilDuration'
+          ),
+          horizontalDuration: document.getElementById('horizontalDuration'),
+          verticalDuration: document.getElementById('verticalDuration'),
+          finalFadeDuration: document.getElementById('finalFadeDuration'),
+          anticipationStretchPx: document.getElementById(
+            'anticipationStretchPx'
+          ),
+          minRy: document.getElementById('minRy'),
+          flashOpacity: document.getElementById('flashOpacity'),
+          glowOpacity: document.getElementById('glowOpacity'),
+          glowStrength: document.getElementById('glowStrength'),
+          canvasScale: document.getElementById('canvasScale'),
+          centerX: document.getElementById('centerX'),
+          centerY: document.getElementById('centerY'),
+        }
+
+        // Separate canvas sizing controls (do not send to shader)
+        const canvasControls = {
+          canvasWidthPct: document.getElementById('canvasWidthPct'),
+          canvasHeightVh: document.getElementById('canvasHeightVh'),
+          lockAspect: document.getElementById('lockAspect'),
+        }
+
+        // Background controls (separate, not included in shader controls)
+        const bgInput = document.getElementById('backgroundColorHex')
+        const applyBg = document.getElementById('applyBg')
+
+        const valueDisplays = {
+          dotDurationValue: document.getElementById('dotDurationValue'),
+          squishDurationValue: document.getElementById('squishDurationValue'),
+          lineHoldDurationValue: document.getElementById(
+            'lineHoldDurationValue'
+          ),
+          anticipationDurationValue: document.getElementById(
+            'anticipationDurationValue'
+          ),
+          anticipationRecoilDurationValue: document.getElementById(
+            'anticipationRecoilDurationValue'
+          ),
+          horizontalDurationValue: document.getElementById(
+            'horizontalDurationValue'
+          ),
+          verticalDurationValue: document.getElementById(
+            'verticalDurationValue'
+          ),
+          finalFadeDurationValue: document.getElementById(
+            'finalFadeDurationValue'
+          ),
+          anticipationStretchPxValue: document.getElementById(
+            'anticipationStretchPxValue'
+          ),
+          minRyValue: document.getElementById('minRyValue'),
+          flashOpacityValue: document.getElementById('flashOpacityValue'),
+          glowOpacityValue: document.getElementById('glowOpacityValue'),
+          glowStrengthValue: document.getElementById('glowStrengthValue'),
+          canvasScaleValue: document.getElementById('canvasScaleValue'),
+          centerXValue: document.getElementById('centerXValue'),
+          centerYValue: document.getElementById('centerYValue'),
+          canvasWidthPctValue: document.getElementById('canvasWidthPctValue'),
+          canvasHeightVhValue: document.getElementById('canvasHeightVhValue'),
+        }
+
+        // Add input listeners
+        Object.keys(controls).forEach((key) => {
+          if (controls[key]) {
+            controls[key].addEventListener('input', (e) => {
+              const value = parseFloat(e.target.value)
+              valueDisplays[key + 'Value'].textContent =
+                key.includes('opacity') ||
+                key.includes('Strength') ||
+                key.includes('Scale') ||
+                key.includes('center')
+                  ? value.toFixed(2)
+                  : value.toString()
+
+              // Update the animation
+              updateCrtGlsl({
+                [key]: value,
+              })
+            })
+          }
+        })
+
+        // Canvas sizing listeners
+        if (canvasControls.canvasWidthPct) {
+          canvasControls.canvasWidthPct.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value)
+            if (valueDisplays.canvasWidthPctValue) {
+              valueDisplays.canvasWidthPctValue.textContent = value.toString()
+            }
+            applyCanvasSizing(
+              value,
+              parseFloat(canvasControls.canvasHeightVh?.value || '60'),
+              !!canvasControls.lockAspect?.checked
+            )
+          })
+        }
+        if (canvasControls.canvasHeightVh) {
+          canvasControls.canvasHeightVh.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value)
+            if (valueDisplays.canvasHeightVhValue) {
+              valueDisplays.canvasHeightVhValue.textContent = value.toString()
+            }
+            applyCanvasSizing(
+              parseFloat(canvasControls.canvasWidthPct?.value || '100'),
+              value,
+              !!canvasControls.lockAspect?.checked
+            )
+          })
+        }
+        if (canvasControls.lockAspect) {
+          canvasControls.lockAspect.addEventListener('change', () => {
+            applyCanvasSizing(
+              parseFloat(canvasControls.canvasWidthPct?.value || '100'),
+              parseFloat(canvasControls.canvasHeightVh?.value || '60'),
+              !!canvasControls.lockAspect?.checked
+            )
+          })
+        }
+
+        // Background apply handlers
+        applyBg?.addEventListener('click', () => {
+          const hex = bgInput?.value?.trim()
+          if (!hex) return
+          updateCrtGlsl({ backgroundColorHex: hex })
+        })
+        bgInput?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const hex = bgInput?.value?.trim()
+            if (!hex) return
+            updateCrtGlsl({ backgroundColorHex: hex })
+          }
+        })
+
+        // Control buttons
+        document
+          .getElementById('restartAnimation')
+          ?.addEventListener('click', () => {
+            if (window.restartCrtAnimation) {
+              window.restartCrtAnimation()
+            }
+          })
+
+        document
+          .getElementById('resetPosition')
+          ?.addEventListener('click', () => {
+            // Reset position controls to center
+            if (controls.centerX && controls.centerY) {
+              controls.centerX.value = 0.5
+              controls.centerY.value = 0.5
+              valueDisplays.centerXValue.textContent = '0.50'
+              valueDisplays.centerYValue.textContent = '0.50'
+
+              // Update the animation with reset position
+              updateCrtGlsl({
+                centerX: 0.5,
+                centerY: 0.5,
+              })
+            }
+          })
+
+        document
+          .getElementById('resetDefaults')
+          ?.addEventListener('click', () => {
+            // Reset all controls to default values
+            Object.keys(controls).forEach((key) => {
+              if (controls[key]) {
+                const defaultValue = getDefaultValue(key)
+                controls[key].value = defaultValue
+                valueDisplays[key + 'Value'].textContent =
+                  key.includes('opacity') ||
+                  key.includes('Strength') ||
+                  key.includes('Scale') ||
+                  key.includes('center')
+                    ? defaultValue.toFixed(2)
+                    : defaultValue.toString()
+              }
+            })
+
+            // Update animation with defaults
+            updateCrtGlsl({
+              dotDuration: 120,
+              squishDuration: 160,
+              lineHoldDuration: 0,
+              anticipationDuration: 140,
+              anticipationRecoilDuration: 120,
+              horizontalDuration: 260,
+              verticalDuration: 111,
+              finalFadeDuration: 420,
+              anticipationStretchPx: 6,
+              minRy: 1,
+              flashOpacity: 0.9,
+              glowOpacity: 0.45,
+              glowStrength: 1.0,
+              canvasScale: 1.0,
+              centerX: 0.5,
+              centerY: 0.5,
+            })
+
+            // Reset canvas sizing controls
+            if (
+              canvasControls.canvasWidthPct &&
+              canvasControls.canvasHeightVh &&
+              canvasControls.lockAspect
+            ) {
+              canvasControls.canvasWidthPct.value = 100
+              canvasControls.canvasHeightVh.value = 60
+              canvasControls.lockAspect.checked = true
+            }
+            if (valueDisplays.canvasWidthPctValue)
+              valueDisplays.canvasWidthPctValue.textContent = '100'
+            if (valueDisplays.canvasHeightVhValue)
+              valueDisplays.canvasHeightVhValue.textContent = '60'
+            applyCanvasSizing(100, 60, true)
+
+            // Reset background color
+            if (bgInput) bgInput.value = '#1A1515'
+            updateCrtGlsl({ backgroundColorHex: '#1A1515' })
+          })
+
+        // Status updates
+        setInterval(() => {
+          const statusText = document.getElementById('statusText')
+          const animationStatus = document.getElementById('animationStatus')
+
+          if (statusText) {
+            statusText.textContent = window.crtInitialized
+              ? 'Running'
+              : 'Initializing...'
+          }
+
+          if (animationStatus) {
+            animationStatus.textContent = window.crtAnimating
+              ? 'Playing'
+              : 'Stopped'
+          }
+        }, 500)
+      }
+
+      function applyCanvasSizing(widthPct, heightVh, lockAspect) {
+        const pane = document.getElementById('canvasPane')
+        if (!pane) return
+        pane.style.width = `${widthPct}%`
+        if (lockAspect) {
+          pane.style.aspectRatio = '16 / 9'
+          pane.style.height = ''
+        } else {
+          pane.style.aspectRatio = ''
+          pane.style.height = `${heightVh}vh`
+        }
+      }
+
+      // Initialize canvas sizing once DOM is ready
+      document.addEventListener('DOMContentLoaded', () => {
+        applyCanvasSizing(100, 60, true)
+      })
+
+      function getDefaultValue(key) {
+        const defaults = {
+          dotDuration: 120,
+          squishDuration: 160,
+          lineHoldDuration: 0,
+          anticipationDuration: 140,
+          anticipationRecoilDuration: 120,
+          horizontalDuration: 260,
+          verticalDuration: 111,
+          finalFadeDuration: 420,
+          anticipationStretchPx: 6,
+          minRy: 1,
+          flashOpacity: 0.9,
+          glowOpacity: 0.45,
+          glowStrength: 1.0,
+          canvasScale: 1.0,
+          centerX: 0.5,
+          centerY: 0.5,
+        }
+        return defaults[key] || 0
+      }
+
+      // Global status tracking
+      window.crtInitialized = false
+      window.crtAnimating = false
+
+      // Track initialization
+      setTimeout(() => {
+        window.crtInitialized = true
+      }, 1000)
+    </script>
+  </body>
+</html>

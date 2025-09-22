@@ -260,6 +260,11 @@ document.addEventListener('DOMContentLoaded', () => {
     import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
       console.error('Failed to load Twilight Fringe module:', error)
     })
+
+    // Load CRT Intro (auto-initializes on .crt-intro-container via side-effects)
+    import('./features/tf-home-v2/home-intro/crtIntro.js').catch((error) => {
+      console.error('Failed to load CrtIntro module:', error)
+    })
   } else {
     console.log(
       'Home page element not found. Skipping TF Home UI module loading.'

@@ -3,8 +3,11 @@ import eslintPlugin from 'vite-plugin-eslint'
 import path from 'path'
 
 // vite.config.js
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [eslintPlugin({ cache: false })],
+  optimizeDeps: {
+    exclude: ['aurora.js', 'twilightFringe.js', 'energy.js'],
+  },
   server: {
     host: 'localhost',
     cors: '*',
@@ -13,27 +16,30 @@ export default defineConfig({
       protocol: 'ws',
     },
   },
-  build: {
-    minify: true,
-    manifest: true,
-    lib: {
-      entry: path.resolve(__dirname, 'src/main.js'),
-      name: 'Main',
-      formats: ['umd'],
-      fileName: () => 'main.js',
-    },
-    rollupOptions: {
-      external: ['jquery'],
-      output: {
-        globals: {
-          jquery: '$',
-        },
-        inlineDynamicImports: true,
-        esModule: false,
-        compact: true,
-      },
-    },
-  },
+  build:
+    command === 'build'
+      ? {
+          minify: true,
+          manifest: true,
+          lib: {
+            entry: path.resolve(__dirname, 'src/main.js'),
+            name: 'Main',
+            formats: ['umd'],
+            fileName: () => 'main.js',
+          },
+          rollupOptions: {
+            external: ['jquery'],
+            output: {
+              globals: {
+                jquery: '$',
+              },
+              inlineDynamicImports: true,
+              esModule: false,
+              compact: true,
+            },
+          },
+        }
+      : {},
   resolve: {
     alias: [
       {
@@ -46,4 +52,4 @@ export default defineConfig({
     ],
   },
   assetsInclude: ['**/*.riv'],
-})
+}))

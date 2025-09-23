@@ -117,9 +117,67 @@
           />
         </div>
 
+        <!-- Bloom Controls -->
+        <div class="control-group">
+          <h3>Bloom</h3>
+          <label style="display: flex; align-items: center; gap: 8px">
+            <input type="checkbox" id="bloomEnabled" checked /> Enabled
+          </label>
+          <label>Strength: <span id="bloomStrengthValue">0.90</span></label>
+          <input
+            type="range"
+            id="bloomStrength"
+            min="0"
+            max="2"
+            step="0.05"
+            value="0.90"
+          />
+
+          <label>Radius: <span id="bloomRadiusValue">0.60</span></label>
+          <input
+            type="range"
+            id="bloomRadius"
+            min="0"
+            max="1.5"
+            step="0.05"
+            value="0.60"
+          />
+
+          <label>Threshold: <span id="bloomThresholdValue">0.00</span></label>
+          <input
+            type="range"
+            id="bloomThreshold"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.00"
+          />
+        </div>
+
         <!-- Visual Controls -->
         <div class="control-group">
           <h3>Visual Settings</h3>
+          <label>Edge Softness: <span id="edgeSoftnessValue">0.05</span></label>
+          <input
+            type="range"
+            id="edgeSoftness"
+            min="0.0"
+            max="0.5"
+            step="0.005"
+            value="0.05"
+          />
+          <label
+            >Dot Max Size (0-1 of screen):
+            <span id="dotMaxSizeValue">0.08</span></label
+          >
+          <input
+            type="range"
+            id="dotMaxSize"
+            min="0.01"
+            max="0.3"
+            step="0.01"
+            value="0.08"
+          />
 
           <label
             >Anticipation Stretch (px):
@@ -241,21 +299,39 @@
           />
 
           <label style="display: flex; align-items: center; gap: 8px">
-            <input type="checkbox" id="lockAspect" checked /> Lock 16:9
+            <input type="checkbox" id="lockAspect" /> Lock 16:9
           </label>
         </div>
 
-        <!-- Background -->
+        <!-- Background / Start -->
         <div class="control-group">
           <h3>Background</h3>
-          <label>Background Color (hex)</label>
+          <label>Overlay Color</label>
+          <input type="color" id="backgroundColorPicker" value="#4e3b3b" />
+
+          <h3 style="margin-top: 16px">Start</h3>
+          <label
+            >Start Delay (ms): <span id="startDelayMsValue">0</span>ms</label
+          >
           <input
-            type="text"
-            id="backgroundColorHex"
-            value="#1A1515"
-            placeholder="#1A1515"
+            type="range"
+            id="startDelayMs"
+            min="0"
+            max="5000"
+            step="100"
+            value="0"
           />
-          <button id="applyBg">Apply Background</button>
+
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              margin-top: 10px;
+            "
+          >
+            <input type="checkbox" id="loopEnabled" checked /> Loop animation
+          </label>
         </div>
 
         <!-- Status -->
@@ -288,20 +364,41 @@
     </script>
 
     <script type="module">
-      import { initializeCrtGlsl, updateCrtGlsl } from './crt-glsl.js'
+      import {
+        initializeCrtGlsl,
+        updateCrtGlsl,
+        registerExternalRenderer,
+      } from './crt-glsl.js'
+      import { setupCrtBloom } from './post-process-crt.js'
 
       // Initialize when DOM is ready
       document.addEventListener('DOMContentLoaded', () => {
-        // Initialize the CRT system
-        initializeCrtGlsl({
+        // Initialize the CRT system and get handles
+        const handles = initializeCrtGlsl({
           containerSelector: '#container',
         })
 
+        // Setup selective bloom post-processing on the same canvas/embed
+        const bloom = setupCrtBloom(handles, {
+          enabled: true,
+          strength: 0.9,
+          radius: 0.6,
+          threshold: 0.0,
+        })
+
+        // Register external renderer so the main loop renders via composer
+        if (bloom) {
+          registerExternalRenderer({
+            render: bloom.render,
+            setSize: bloom.setSize,
+          })
+        }
+
         // Setup control listeners
-        setupControls()
+        setupControls(bloom)
       })
 
-      function setupControls() {
+      function setupControls(bloom) {
         const controls = {
           dotDuration: document.getElementById('dotDuration'),
           squishDuration: document.getElementById('squishDuration'),
@@ -320,9 +417,18 @@
           flashOpacity: document.getElementById('flashOpacity'),
           glowOpacity: document.getElementById('glowOpacity'),
           glowStrength: document.getElementById('glowStrength'),
+          edgeSoftness: document.getElementById('edgeSoftness'),
           canvasScale: document.getElementById('canvasScale'),
           centerX: document.getElementById('centerX'),
           centerY: document.getElementById('centerY'),
+          dotMaxSize: document.getElementById('dotMaxSize'),
+          startDelayMs: document.getElementById('startDelayMs'),
+          loopEnabled: document.getElementById('loopEnabled'),
+          // Bloom
+          bloomEnabled: document.getElementById('bloomEnabled'),
+          bloomStrength: document.getElementById('bloomStrength'),
+          bloomRadius: document.getElementById('bloomRadius'),
+          bloomThreshold: document.getElementById('bloomThreshold'),
         }
 
         // Separate canvas sizing controls (do not send to shader)
@@ -333,8 +439,7 @@
         }
 
         // Background controls (separate, not included in shader controls)
-        const bgInput = document.getElementById('backgroundColorHex')
-        const applyBg = document.getElementById('applyBg')
+        const bgPicker = document.getElementById('backgroundColorPicker')
 
         const valueDisplays = {
           dotDurationValue: document.getElementById('dotDurationValue'),
@@ -364,32 +469,66 @@
           flashOpacityValue: document.getElementById('flashOpacityValue'),
           glowOpacityValue: document.getElementById('glowOpacityValue'),
           glowStrengthValue: document.getElementById('glowStrengthValue'),
+          edgeSoftnessValue: document.getElementById('edgeSoftnessValue'),
           canvasScaleValue: document.getElementById('canvasScaleValue'),
           centerXValue: document.getElementById('centerXValue'),
           centerYValue: document.getElementById('centerYValue'),
           canvasWidthPctValue: document.getElementById('canvasWidthPctValue'),
           canvasHeightVhValue: document.getElementById('canvasHeightVhValue'),
+          dotMaxSizeValue: document.getElementById('dotMaxSizeValue'),
+          startDelayMsValue: document.getElementById('startDelayMsValue'),
+          bloomStrengthValue: document.getElementById('bloomStrengthValue'),
+          bloomRadiusValue: document.getElementById('bloomRadiusValue'),
+          bloomThresholdValue: document.getElementById('bloomThresholdValue'),
         }
 
         // Add input listeners
         Object.keys(controls).forEach((key) => {
           if (controls[key]) {
             controls[key].addEventListener('input', (e) => {
-              const value = parseFloat(e.target.value)
-              valueDisplays[key + 'Value'].textContent =
-                key.includes('opacity') ||
-                key.includes('Strength') ||
-                key.includes('Scale') ||
-                key.includes('center')
-                  ? value.toFixed(2)
-                  : value.toString()
+              const raw = e.target.value
+              const value = key.includes('Delay')
+                ? parseFloat(raw)
+                : parseFloat(raw)
+              if (valueDisplays[key + 'Value']) {
+                valueDisplays[key + 'Value'].textContent =
+                  key.includes('opacity') ||
+                  key.includes('Strength') ||
+                  key.includes('Softness') ||
+                  key.includes('Scale') ||
+                  key.includes('center')
+                    ? value.toFixed(2)
+                    : value.toString()
+              }
 
-              // Update the animation
-              updateCrtGlsl({
-                [key]: value,
-              })
+              // Route bloom params to bloom; others go to shader
+              if (
+                key === 'bloomStrength' ||
+                key === 'bloomRadius' ||
+                key === 'bloomThreshold'
+              ) {
+                bloom?.updateBloomParams?.({
+                  strength: key === 'bloomStrength' ? value : undefined,
+                  radius: key === 'bloomRadius' ? value : undefined,
+                  threshold: key === 'bloomThreshold' ? value : undefined,
+                })
+              } else {
+                updateCrtGlsl({
+                  [key]: value,
+                })
+              }
             })
           }
+        })
+
+        // Bloom enabled toggle
+        controls.bloomEnabled?.addEventListener('change', (e) => {
+          bloom?.updateBloomParams?.({ enabled: !!e.target.checked })
+        })
+
+        // Loop toggle
+        controls.loopEnabled?.addEventListener('change', (e) => {
+          updateCrtGlsl({ loopEnabled: !!e.target.checked })
         })
 
         // Canvas sizing listeners
@@ -429,18 +568,11 @@
           })
         }
 
-        // Background apply handlers
-        applyBg?.addEventListener('click', () => {
-          const hex = bgInput?.value?.trim()
+        // Background color picker
+        bgPicker?.addEventListener('input', (e) => {
+          const hex = e.target.value
           if (!hex) return
           updateCrtGlsl({ backgroundColorHex: hex })
-        })
-        bgInput?.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            const hex = bgInput?.value?.trim()
-            if (!hex) return
-            updateCrtGlsl({ backgroundColorHex: hex })
-          }
         })
 
         // Control buttons
@@ -503,9 +635,18 @@
               flashOpacity: 0.9,
               glowOpacity: 0.45,
               glowStrength: 1.0,
+              edgeSoftness: 0.05,
               canvasScale: 1.0,
               centerX: 0.5,
               centerY: 0.5,
+            })
+
+            // Reset bloom defaults
+            bloom?.updateBloomParams?.({
+              enabled: true,
+              strength: 0.9,
+              radius: 0.6,
+              threshold: 0.0,
             })
 
             // Reset canvas sizing controls
@@ -516,17 +657,32 @@
             ) {
               canvasControls.canvasWidthPct.value = 100
               canvasControls.canvasHeightVh.value = 60
-              canvasControls.lockAspect.checked = true
+              canvasControls.lockAspect.checked = false
             }
             if (valueDisplays.canvasWidthPctValue)
               valueDisplays.canvasWidthPctValue.textContent = '100'
             if (valueDisplays.canvasHeightVhValue)
               valueDisplays.canvasHeightVhValue.textContent = '60'
-            applyCanvasSizing(100, 60, true)
+            applyCanvasSizing(100, 60, false)
 
-            // Reset background color
-            if (bgInput) bgInput.value = '#1A1515'
-            updateCrtGlsl({ backgroundColorHex: '#1A1515' })
+            // Reset background color & start delay
+            if (bgPicker) bgPicker.value = '#4e3b3b'
+            updateCrtGlsl({
+              backgroundColorHex: '#4e3b3b',
+              startDelayMs: 0,
+              dotMaxSize: 0.08,
+              loopEnabled: true,
+            })
+            if (valueDisplays.startDelayMsValue)
+              valueDisplays.startDelayMsValue.textContent = '0'
+            if (controls.startDelayMs) controls.startDelayMs.value = 0
+            if (valueDisplays.dotMaxSizeValue)
+              valueDisplays.dotMaxSizeValue.textContent = '0.08'
+            if (controls.dotMaxSize) controls.dotMaxSize.value = 0.08
+            if (valueDisplays.edgeSoftnessValue)
+              valueDisplays.edgeSoftnessValue.textContent = '0.05'
+            if (controls.edgeSoftness) controls.edgeSoftness.value = 0.05
+            if (controls.loopEnabled) controls.loopEnabled.checked = true
           })
 
         // Status updates
@@ -561,9 +717,9 @@
         }
       }
 
-      // Initialize canvas sizing once DOM is ready
+      // Initialize canvas sizing once DOM is ready (unlocked by default)
       document.addEventListener('DOMContentLoaded', () => {
-        applyCanvasSizing(100, 60, true)
+        applyCanvasSizing(100, 60, false)
       })
 
       function getDefaultValue(key) {
@@ -581,6 +737,7 @@
           flashOpacity: 0.9,
           glowOpacity: 0.45,
           glowStrength: 1.0,
+          edgeSoftness: 0.05,
           canvasScale: 1.0,
           centerX: 0.5,
           centerY: 0.5,

@@ -260,15 +260,32 @@ document.addEventListener('DOMContentLoaded', () => {
     import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
       console.error('Failed to load Twilight Fringe module:', error)
     })
-
-    // Load CRT Intro (auto-initializes on .crt-intro-container via side-effects)
-    import('./features/tf-home-v2/home-intro/crtIntro.js').catch((error) => {
-      console.error('Failed to load CrtIntro module:', error)
-    })
   } else {
     console.log(
       'Home page element not found. Skipping TF Home UI module loading.'
     )
+  }
+
+  // Webflow: auto-initialize CRT Intro on elements marked with data-crt-intro
+  const crtIntroEl = document.querySelector('[data-crt-intro]')
+  if (crtIntroEl) {
+    import('./features/tf-home-v2/crt-glsl/crt-glsl.js')
+      .then(({ initializeCrtGlsl }) => {
+        const bg = crtIntroEl.getAttribute('data-crt-bg')
+        const cfg = bg
+          ? { container: crtIntroEl, initialBgColorHex: bg }
+          : { container: crtIntroEl }
+        initializeCrtGlsl(cfg) // Bloom is auto-wired inside crt-glsl.js
+      })
+      .catch((err) => console.error('Failed to init CRT Intro:', err))
+  }
+
+  // TF Intro: initialize when .tf-logo-intro is present
+  const tfLogoIntroEl = document.querySelector('.tf-logo-intro')
+  if (tfLogoIntroEl) {
+    import('./features/tf-home-v2/tf-intro.js')
+      .then(({ default: initTfIntro }) => initTfIntro())
+      .catch((err) => console.error('Failed to init TF Intro:', err))
   }
 })
 

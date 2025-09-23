@@ -272,3 +272,32 @@ body::selection {
   /* OR for more control: */
   transition: min-width var(--transition-duration, 0.1s) ease-in-out;
 }
+
+[data-crt-intro] canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  position: absolute;
+}
+
+[data-crt-intro] {
+  height: 100vh;
+}
+
+/* .tf-home-intro-wrapper
+@keyframes slideInFromLeft {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+header {  
+
+  animation: 1s ease-out 0s 1 slideInFromLeft;
+  
+  background: #333;
+  padding: 30px;
+} */

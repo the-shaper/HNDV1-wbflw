@@ -19,7 +19,7 @@ const DEFAULT_PARAMS = {
   dotDuration: 120,
   squishDuration: 160,
   lineHoldDuration: 0,
-  horizontalDuration: 160,
+  horizontalDuration: 69,
   verticalDuration: 160,
   anticipationDuration: 140,
   anticipationRecoilDuration: 120,

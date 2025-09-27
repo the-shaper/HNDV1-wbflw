@@ -39,7 +39,7 @@ export function setupCrtBloom(handles, options = {}) {
   // Run bloom over the same base render
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(size.x, size.y),
-    options.strength ?? 0.05,
+    options.strength ?? 0.9,
     options.radius ?? 0.6,
     options.threshold ?? 0.0
   )

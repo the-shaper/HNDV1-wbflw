@@ -114,6 +114,27 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch((error) => {
         console.error('Failed to load the service select module:', error)
       })
+
+    // Clean Slate 3D - init on load if container exists
+    const cleanSlateContainer = document.querySelector('.cleanslate-container')
+    if (cleanSlateContainer) {
+      import('./features/agency/clean-slate3d/cleanSlate3d.js')
+        .then((module) => {
+          if (typeof module.default === 'function') {
+            module.default(cleanSlateContainer)
+            console.log('Clean Slate 3D initialized on load.')
+          } else {
+            console.error(
+              'Error: initCleanSlate3d not exported as default function or is not a function.'
+            )
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load the Clean Slate 3D module:', error)
+        })
+    } else {
+      console.log('No .cleanslate-container found on load – skipping 3D init.')
+    }
   } else {
     console.log(
       'Agency main page element not found. Skipping agency-specific module loading.'

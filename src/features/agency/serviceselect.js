@@ -36,7 +36,7 @@ function initServiceSelect() {
   }
 
   const getCollapsedWidth = () => {
-    if (window.matchMedia('(max-width: 375px)').matches) {
+    if (window.matchMedia('(max-width: 430px)').matches) {
       return collapsedWidths.mobileVertical
     }
 
@@ -52,7 +52,7 @@ function initServiceSelect() {
   }
 
   const getExpandedContentWidth = () => {
-    if (window.matchMedia('(max-width: 375px)').matches) {
+    if (window.matchMedia('(max-width: 430px)').matches) {
       return expandedContentWidths.mobileVertical
     }
 
@@ -68,7 +68,7 @@ function initServiceSelect() {
   }
 
   const getExpandedPanelWidth = () => {
-    if (window.matchMedia('(max-width:375px)').matches) {
+    if (window.matchMedia('(max-width:430px)').matches) {
       return expandedPanelWidths.mobileVertical
     }
 
@@ -126,7 +126,7 @@ function initServiceSelect() {
   }
 
   const mobileVerticalMediaQuery = window.matchMedia(
-    '(max-width: 375px) and (orientation: portrait)'
+    '(max-width: 430px) and (orientation: portrait)'
   )
   let currentMode = mobileVerticalMediaQuery.matches ? 'draggable' : 'accordion'
   let draggableInstance = null
@@ -190,7 +190,7 @@ function initServiceSelect() {
         height: '66svh',
       })
 
-      // Parse svw to numeric for snaps (e.g., '33svw' -> 33/100 * innerWidth ~123px on 375px)
+      // Parse svw to numeric for snaps (e.g., '33svw' -> 33/100 * innerWidth ~123px on 375px : UPDATE TO 430px)
       const rawWidth = getExpandedPanelWidth() // '33svw'
       const svwValue = parseFloat(rawWidth.replace('svw', '')) || 33 // Numeric 33
       const panelNum = (svwValue / 100) * window.innerWidth // ~123px
@@ -817,7 +817,7 @@ function initServiceSelect() {
                 height: '100%',
               })
 
-              // Parse svw to numeric for snaps (e.g., '33svw' -> 33/100 * innerWidth ~123px on 375px)
+              // Parse svw to numeric for snaps (e.g., '33svw' -> 33/100 * innerWidth ~123px on 375px : UPDATE TO 430px)
               const rawWidth = getExpandedPanelWidth() // '33svw'
               const svwValue = parseFloat(rawWidth.replace('svw', '')) || 33 // Numeric 33
               const panelNum = (svwValue / 100) * window.innerWidth // ~123px

@@ -52,6 +52,9 @@ const fallbackSettings = {
   mouseFringeIntensity: 5.0, // New setting for interactive fringe strength
   imageVisible: true,
   imageSize: 2.0,
+  imageSizeTablet: 1.6,
+  imageSizeMobileHorizontal: 1.3,
+  imageSizeMobileVertical: 1.1,
   meshVisible: true,
   fringeAmount: 0.005,
   liquidFlow: 'Static',
@@ -162,6 +165,23 @@ function readSettingsFromDOM(containerEl) {
     }
   }
   return settings
+}
+
+// --- Responsive Image Size Helpers (following serviceselect.js pattern) ---
+function getResponsiveImageSize(settings) {
+  if (window.matchMedia('(max-width: 430px)').matches) {
+    return settings.imageSizeMobileVertical
+  }
+
+  if (window.matchMedia('(max-width: 568px)').matches) {
+    return settings.imageSizeMobileHorizontal
+  }
+
+  if (window.matchMedia('(max-width: 1024px)').matches) {
+    return settings.imageSizeTablet
+  }
+
+  return settings.imageSize
 }
 
 // --- GLSL Shaders (inlined so no HTML <script> tags are needed) ---
@@ -439,11 +459,11 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
   console.log(`${LOG_PREFIX} Creating WebGL renderer...`)
   const pixelRatio = Math.min(window.devicePixelRatio, 2) // Cap at 2x for high DPI
-  const renderer = new THREE.WebGLRenderer({ 
-    antialias: true, 
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
     alpha: true,
     powerPreference: 'high-performance',
-    precision: 'mediump' // Use lower precision for better performance
+    precision: 'mediump', // Use lower precision for better performance
   })
   renderer.setPixelRatio(pixelRatio)
   renderer.setSize(containerEl.clientWidth, containerEl.clientHeight, false)
@@ -624,6 +644,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
           if (imagePlane) {
             // Update existing plane
+            const responsiveSize = getResponsiveImageSize(settings)
             imagePlane.material.uniforms.map.value = texture
             imagePlane.material.uniforms.brightness.value =
               settings.imageBrightness
@@ -634,13 +655,14 @@ export async function createTwilightFringe(containerEl, options = {}) {
               1.5
             )
             imagePlane.scale.set(
-              settings.imageSize * imageAspectRatio,
-              settings.imageSize,
+              responsiveSize * imageAspectRatio,
+              responsiveSize,
               1
             )
             imagePlane.material.needsUpdate = true
           } else {
             // Create new plane
+            const responsiveSize = getResponsiveImageSize(settings)
             const planeGeo = new THREE.PlaneGeometry(1, 1)
             const planeMat = new THREE.ShaderMaterial({
               uniforms: {
@@ -676,8 +698,8 @@ export async function createTwilightFringe(containerEl, options = {}) {
               1.5
             )
             imagePlane.scale.set(
-              settings.imageSize * imageAspectRatio,
-              settings.imageSize,
+              responsiveSize * imageAspectRatio,
+              responsiveSize,
               1
             )
             imagePlane.visible = settings.showPng
@@ -1306,9 +1328,50 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
     imageFolder
       .add(settings, 'imageSize', 0.1, 5.0, 0.01)
-      .name('size')
+      .name('size (desktop)')
       .onChange((v) => {
-        imagePlane.scale.set(v * imageAspectRatio, v, 1)
+        const responsiveSize = getResponsiveImageSize(settings)
+        imagePlane.scale.set(
+          responsiveSize * imageAspectRatio,
+          responsiveSize,
+          1
+        )
+      })
+
+    imageFolder
+      .add(settings, 'imageSizeTablet', 0.1, 5.0, 0.01)
+      .name('size (tablet)')
+      .onChange((v) => {
+        const responsiveSize = getResponsiveImageSize(settings)
+        imagePlane.scale.set(
+          responsiveSize * imageAspectRatio,
+          responsiveSize,
+          1
+        )
+      })
+
+    imageFolder
+      .add(settings, 'imageSizeMobileHorizontal', 0.1, 5.0, 0.01)
+      .name('size (mobile H)')
+      .onChange((v) => {
+        const responsiveSize = getResponsiveImageSize(settings)
+        imagePlane.scale.set(
+          responsiveSize * imageAspectRatio,
+          responsiveSize,
+          1
+        )
+      })
+
+    imageFolder
+      .add(settings, 'imageSizeMobileVertical', 0.1, 5.0, 0.01)
+      .name('size (mobile V)')
+      .onChange((v) => {
+        const responsiveSize = getResponsiveImageSize(settings)
+        imagePlane.scale.set(
+          responsiveSize * imageAspectRatio,
+          responsiveSize,
+          1
+        )
       })
 
     imageFolder
@@ -1344,13 +1407,15 @@ export async function createTwilightFringe(containerEl, options = {}) {
   // ---------------- Helper functions to control animation state ----------------
   function shouldAnimate() {
     return (
-      settings.showMainEffect || 
+      settings.showMainEffect ||
       settings.optimizedLiquidEnabled ||
-      (settings.showPostProcessing && 
-       (liquidPass?.enabled || diffusePass?.enabled || settings.showMainEffect))
+      (settings.showPostProcessing &&
+        (liquidPass?.enabled ||
+          diffusePass?.enabled ||
+          settings.showMainEffect))
     )
   }
-  
+
   function updateAnimationState() {
     if (shouldAnimate()) {
       startAnimation()
@@ -1364,60 +1429,60 @@ export async function createTwilightFringe(containerEl, options = {}) {
 
   function startAnimation() {
     if (isAnimating) return
-    
+
     isAnimating = true
     clock.start()
     console.log(`${LOG_PREFIX} Starting animation...`)
-    
+
     function animate() {
       if (!isAnimating) return
-      
+
       // Check if tab is visible
       if (document.visibilityState === 'hidden') {
         animationId = requestAnimationFrame(animate)
         return
       }
-      
+
       const currentTime = performance.now()
       const deltaTime = currentTime - lastFrameTime
-      
+
       // Frame rate limiting
       if (deltaTime < frameTime) {
         animationId = requestAnimationFrame(animate)
         return
       }
-      
+
       lastFrameTime = currentTime - (deltaTime % frameTime)
       const elapsedTime = clock.getElapsedTime()
-      
+
       // Update mesh uniforms if needed
       if (settings.showMainEffect && mainMesh?.visible) {
         material.uniforms.uTime.value = elapsedTime
       }
-      
+
       // Update optimized liquid if enabled
       if (settings.optimizedLiquidEnabled && optimizedLiquidPass?.enabled) {
         optimizedLiquidPass.uniforms.uTime.value = elapsedTime
       }
-      
+
       // Update post-processing
       if (liquidPass) {
         liquidPass.uniforms.uTime.value = elapsedTime
       }
-      
+
       // Render the scene
       if (composer) {
         composer.render()
       } else if (renderer && scene && camera) {
         renderer.render(scene, camera)
       }
-      
+
       animationId = requestAnimationFrame(animate)
     }
-    
+
     animate()
   }
-  
+
   function stopAnimation() {
     if (isAnimating) {
       isAnimating = false
@@ -1472,6 +1537,13 @@ export async function createTwilightFringe(containerEl, options = {}) {
       window.innerWidth,
       window.innerHeight
     )
+
+    // Update image plane with responsive size
+    if (imagePlane) {
+      const responsiveSize = getResponsiveImageSize(settings)
+      imagePlane.scale.set(responsiveSize * imageAspectRatio, responsiveSize, 1)
+      console.log(`${LOG_PREFIX} Image plane resized to: ${responsiveSize}`)
+    }
   }
   window.addEventListener('resize', onResize)
 
@@ -1632,10 +1704,28 @@ export async function createTwilightFringe(containerEl, options = {}) {
         optimizedLiquidPass.uniforms.uWaveAmp.value =
           settings.radialWaveAmplitude
       }
+
+      // Update image plane with responsive size if any image size settings changed
+      if (
+        imagePlane &&
+        ('imageSize' in newSettings ||
+          'imageSizeTablet' in newSettings ||
+          'imageSizeMobileHorizontal' in newSettings ||
+          'imageSizeMobileVertical' in newSettings)
+      ) {
+        const responsiveSize = getResponsiveImageSize(settings)
+        imagePlane.scale.set(
+          responsiveSize * imageAspectRatio,
+          responsiveSize,
+          1
+        )
+        console.log(
+          `${LOG_PREFIX} Image size updated to responsive size: ${responsiveSize}`
+        )
+      }
     },
   }
 }
-
 
 // Simplified initialization
 async function initializeTwilightFringe() {

@@ -394,7 +394,7 @@ export function initializeCrtGlsl(config = {}) {
   }
 
   // Start animation
-  startAnimation()
+  // startAnimation()  // Removed: animation start will be triggered externally after Rive loads
 
   // Add resize handler (observe container to recompute canvas rect)
   const resizeObserver = new ResizeObserver((entries) => {
@@ -599,6 +599,8 @@ function startAnimation() {
 
   animationId = requestAnimationFrame(animate)
 }
+
+export { startAnimation as startCrtAnimation }
 
 function restartAnimation() {
   if (animationId) {

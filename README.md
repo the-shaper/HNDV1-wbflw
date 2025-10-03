@@ -27,36 +27,5 @@ The doc is [here](https://github.com/armandsalle/vite-javascript-webflow/blob/ma
 
 <br />
 
-## Building and running on localhost
-
-This project is using `yarn`.
-
-First, install dependencies:
-
-```sh
-yarn
-```
-
-To launch a local dev server:
-
-```sh
-yarn dev
-```
-
-To create a production build:
-
-```sh
-yarn build
-```
-
-To clean the local `/dist` folder:
-
-```sh
-yarn clean
-```
-
-To lint the code with ESLint and Prettier:
-
-```sh
-yarn lint:fix
-```
+// There is a new folder src/primitives/three-js
+where there is a three js base

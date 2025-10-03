@@ -116,25 +116,26 @@ document.addEventListener('DOMContentLoaded', () => {
       })
 
     // Clean Slate 3D - init on load if container exists
-    const cleanSlateContainer = document.querySelector('.cleanslate-container')
-    if (cleanSlateContainer) {
-      import('./features/agency/clean-slate3d/cleanSlate3d.js')
-        .then((module) => {
-          if (typeof module.default === 'function') {
-            module.default(cleanSlateContainer)
-            console.log('Clean Slate 3D initialized on load.')
-          } else {
-            console.error(
-              'Error: initCleanSlate3d not exported as default function or is not a function.'
-            )
-          }
-        })
-        .catch((error) => {
-          console.error('Failed to load the Clean Slate 3D module:', error)
-        })
-    } else {
-      console.log('No .cleanslate-container found on load – skipping 3D init.')
-    }
+    // TODO: Re-enable when needed for future Three.js implementations
+    // const cleanSlateContainer = document.querySelector('.cleanslate-container')
+    // if (cleanSlateContainer) {
+    //   import('../primitives/three-js/clean-slate3d/cleanSlate3d.js')
+    //     .then((module) => {
+    //       if (typeof module.default === 'function') {
+    //         module.default(cleanSlateContainer)
+    //         console.log('Clean Slate 3D initialized on load.')
+    //       } else {
+    //         console.error(
+    //           'Error: initCleanSlate3d not exported as default function or is not a function.'
+    //         )
+    //       }
+    //     })
+    //     .catch((error) => {
+    //       console.error('Failed to load the Clean Slate 3D module:', error)
+    //     })
+    // } else {
+    //   console.log('No .cleanslate-container found on load – skipping 3D init.')
+    // }
   } else {
     console.log(
       'Agency main page element not found. Skipping agency-specific module loading.'
@@ -248,65 +249,115 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('AYW page element not found. Skipping AYW module loading.')
   }
 
-  /* ――――― Rive runtime on #rive-canvas ――――― */
-  const riveCanvas = document.getElementById('rive-canvas')
-  if (riveCanvas) {
-    import('./features/tf-home-v2/rive-runtime/script.js')
-      .then(({ default: initRiveCanvas }) => initRiveCanvas())
-      .catch((err) => console.error('Failed to load Rive runtime:', err))
-  } else {
-    console.log('No #rive-canvas found – skipping Rive runtime.')
-  }
-
   // Check if the page has the data-page="home" attribute for TF Home UI
   const isHomePage = document.querySelector('[data-page="home"]')
 
   if (isHomePage) {
-    console.log('Home page detected. Dynamically importing TF Home UI module.')
-    import('./features/tf-home-v2/tf-home-ui.js')
-      .then((module) => {
-        if (typeof module.default === 'function') {
-          module.default() // Call initTfHomeUI
-        } else {
-          console.error(
-            'Error: initTfHomeUI not exported as default function or is not a function.'
-          )
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load the TF Home UI module:', error)
-      })
+    console.log(
+      'Home page detected. Initializing home-specific modules with Rive dependency.'
+    )
 
-    // Load Twilight Fringe background effect (auto-initialises via side-effects)
-    import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
-      console.error('Failed to load Twilight Fringe module:', error)
+    // Init Rive if present - returns promise
+    const riveCanvas = document.getElementById('rive-canvas')
+    let riveLoaded = Promise.resolve()
+    if (riveCanvas) {
+      riveLoaded = import('./features/tf-home-v2/rive-runtime/script.js')
+        .then(({ default: initRiveCanvas }) => initRiveCanvas())
+        .catch((err) => {
+          console.error('Failed to load Rive runtime:', err)
+          return Promise.resolve() // Continue without Rive
+        })
+    }
+
+    // Chain TF Home UI and Twilight after Rive load
+    riveLoaded.then(() => {
+      console.log(
+        'Rive loaded (or skipped). Initializing TF Home UI and Twilight.'
+      )
+      import('./features/tf-home-v2/tf-home-ui.js')
+        .then((module) => {
+          if (typeof module.default === 'function') {
+            module.default() // Call initTfHomeUI
+          } else {
+            console.error(
+              'Error: initTfHomeUI not exported as default function or is not a function.'
+            )
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load the TF Home UI module:', error)
+        })
+
+      // Load Twilight Fringe background effect (auto-initialises via side-effects)
+      import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
+        console.error('Failed to load Twilight Fringe module:', error)
+      })
     })
+
+    // Webflow: auto-initialize CRT Intro on elements marked with data-crt-intro
+    const crtIntroEl = document.querySelector('[data-crt-intro]')
+    if (crtIntroEl) {
+      const crtImport = import('./features/tf-home-v2/crt-glsl/crt-glsl.js')
+      crtImport
+        .then(({ initializeCrtGlsl }) => {
+          const bg = crtIntroEl.getAttribute('data-crt-bg')
+          const cfg = bg
+            ? { container: crtIntroEl, initialBgColorHex: bg }
+            : { container: crtIntroEl }
+          initializeCrtGlsl(cfg) // Setup WebGL instance early
+          console.log(
+            'CRT GLSL setup complete - awaiting Rive for animation start'
+          )
+        })
+        .catch((err) => console.error('Failed to import CRT GLSL:', err))
+
+      // Start CRT animation after Rive loads
+      riveLoaded.then(() => {
+        crtImport
+          .then(({ startCrtAnimation }) => {
+            startCrtAnimation()
+            console.log('CRT animation started after Rive load')
+          })
+          .catch((err) => console.error('Failed to start CRT animation:', err))
+      })
+    }
+
+    // TF Intro: initialize when .tf-logo-intro is present
+    const tfLogoIntroEl = document.querySelector('.tf-logo-intro')
+    if (tfLogoIntroEl) {
+      const tfImport = import('./features/tf-home-v2/tf-intro.js')
+      tfImport
+        .then(({ initTfIntro }) => {
+          initTfIntro() // Setup early
+          console.log(
+            'TF Intro setup complete - awaiting Rive for animation start'
+          )
+        })
+        .catch((err) => console.error('Failed to import TF Intro:', err))
+
+      // Start TF Intro animation after Rive loads
+      riveLoaded.then(() => {
+        tfImport
+          .then(({ startTfIntro }) => {
+            startTfIntro()
+            console.log('TF Intro animation started after Rive load')
+            // Hide the loading wrap element
+            const loadingWrap = document.querySelector(
+              '.tf-intro-loading-wrap-2'
+            )
+            if (loadingWrap) {
+              loadingWrap.style.display = 'none'
+            }
+          })
+          .catch((err) =>
+            console.error('Failed to start TF Intro animation:', err)
+          )
+      })
+    }
   } else {
     console.log(
-      'Home page element not found. Skipping TF Home UI module loading.'
+      'Home page element not found. Skipping TF Home UI and related module loading.'
     )
-  }
-
-  // Webflow: auto-initialize CRT Intro on elements marked with data-crt-intro
-  const crtIntroEl = document.querySelector('[data-crt-intro]')
-  if (crtIntroEl) {
-    import('./features/tf-home-v2/crt-glsl/crt-glsl.js')
-      .then(({ initializeCrtGlsl }) => {
-        const bg = crtIntroEl.getAttribute('data-crt-bg')
-        const cfg = bg
-          ? { container: crtIntroEl, initialBgColorHex: bg }
-          : { container: crtIntroEl }
-        initializeCrtGlsl(cfg) // Bloom is auto-wired inside crt-glsl.js
-      })
-      .catch((err) => console.error('Failed to init CRT Intro:', err))
-  }
-
-  // TF Intro: initialize when .tf-logo-intro is present
-  const tfLogoIntroEl = document.querySelector('.tf-logo-intro')
-  if (tfLogoIntroEl) {
-    import('./features/tf-home-v2/tf-intro.js')
-      .then(({ default: initTfIntro }) => initTfIntro())
-      .catch((err) => console.error('Failed to init TF Intro:', err))
   }
 })
 

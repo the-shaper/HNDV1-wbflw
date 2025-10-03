@@ -64,7 +64,7 @@ export default function initCleanSlate3d(container) {
   // Model loader (replaces debug cube)
   const loader = new GLTFLoader()
   loader.load(
-    'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GogOY49s0c6GFTHn7tPybWik8mp3jVYAwerdU',
+    'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GrvRm48WAkqeTZGVaJ6CH75D1Wcx9wUvlYOmy',
     (gltf) => {
       const model = gltf.scene
       scene.add(model)
@@ -72,7 +72,7 @@ export default function initCleanSlate3d(container) {
       const box = new THREE.Box3().setFromObject(model)
       const center = box.getCenter(new THREE.Vector3())
       model.position.sub(center)
-      model.position.y = -0.3
+      model.position.y = -0.5
       const size = box.getSize(new THREE.Vector3())
       const maxDim = Math.max(size.x, size.y, size.z)
       if (maxDim > 0) {

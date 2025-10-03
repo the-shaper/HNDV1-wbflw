@@ -207,6 +207,20 @@ function initAgencyTabs() {
         this.bodyElement.classList.add(`bg-${tabIndex}`)
       }
 
+      // Handle .agency-showcase-bg.non class based on active tab
+      const showcaseBgElement = document.querySelector('.agency-showcase-bg')
+      if (showcaseBgElement) {
+        const tabIndex = Array.from(this.tabs).indexOf(newTab) + 1
+
+        if (tabIndex === 2) {
+          // Remove .non class when tab 2 is active
+          showcaseBgElement.classList.remove('non')
+        } else {
+          // Add .non class when tab 1 or 3 is active (or any other tab)
+          showcaseBgElement.classList.add('non')
+        }
+      }
+
       const tabIndexForScramble = Array.from(this.tabs).indexOf(newTab) + 1
       const oldTabIndex = oldTab
         ? Array.from(this.tabs).indexOf(oldTab) + 1

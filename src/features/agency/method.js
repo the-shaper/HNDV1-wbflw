@@ -8,6 +8,59 @@ function initMethod() {
     return
   }
 
+  // BREAKPOINT CONFIGURATIONS
+  const breakpointConfigs = {
+    mobileVertical: {
+      // max-width: 430px
+      svgSize: 20,
+      menuCollectionSize: 30,
+      menuRadius: 170,
+      menuOffsetX: 50,
+      menuOffsetY: 25,
+    },
+    mobileHorizontal: {
+      // max-width: 568px
+      svgSize: 300,
+      menuCollectionSize: 550,
+      menuRadius: 160,
+      menuOffsetX: 75,
+      menuOffsetY: 75,
+    },
+    tablet: {
+      // max-width: 768px
+      svgSize: 600,
+      menuCollectionSize: 531,
+      menuRadius: 200,
+      menuOffsetX: 100,
+      menuOffsetY: 50,
+    },
+    desktop: {
+      // Everything else
+      svgSize: 666,
+      menuCollectionSize: 994,
+      menuRadius: 299,
+      menuOffsetX: 278,
+      menuOffsetY: 400,
+    },
+  }
+
+  // Get current breakpoint configuration
+  const getCurrentBreakpointConfig = () => {
+    if (window.matchMedia('(max-width: 430px)').matches) {
+      return breakpointConfigs.mobileVertical
+    }
+
+    if (window.matchMedia('(max-width: 568px)').matches) {
+      return breakpointConfigs.mobileHorizontal
+    }
+
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      return breakpointConfigs.tablet
+    }
+
+    return breakpointConfigs.desktop
+  }
+
   // CONFIGURATION
   const config = {
     parentSelector: '.method-container',
@@ -16,11 +69,6 @@ function initMethod() {
     menuItemSelector: '.method-menu-item',
     contentSelector: '.method-content.custom-scrollbar',
     contentItemSelector: '.method-content-item',
-    svgSize: 666,
-    menuCollectionSize: 944,
-    menuRadius: 299,
-    menuOffsetX: 278,
-    menuOffsetY: 435,
     startAngle: -90, // This will make items start at 12 o'clock (-90 degrees)
     animationDuration: 0.5, // Animation duration in seconds
     initialRotation: 0, // Set to 0 - rotation is now based on active index
@@ -32,13 +80,31 @@ function initMethod() {
     showSvgPathCircle: false, // Default: Hide red SVG circle
     showMenuContainerBorder: false, // Default: Hide green border
     showMenuItemPathCircle: false, // Default: Hide yellow item path circle
-    get menuOffsetX() {
-      return (this.menuCollectionSize - this.svgSize) / 2
-    },
-    get menuOffsetY() {
-      return (this.menuCollectionSize - this.svgSize) / 2
-    },
   }
+
+  // Add responsive getters to config
+  Object.defineProperties(config, {
+    svgSize: {
+      get: () => getCurrentBreakpointConfig().svgSize,
+      configurable: true,
+    },
+    menuCollectionSize: {
+      get: () => getCurrentBreakpointConfig().menuCollectionSize,
+      configurable: true,
+    },
+    menuRadius: {
+      get: () => getCurrentBreakpointConfig().menuRadius,
+      configurable: true,
+    },
+    menuOffsetX: {
+      get: () => getCurrentBreakpointConfig().menuOffsetX,
+      configurable: true,
+    },
+    menuOffsetY: {
+      get: () => getCurrentBreakpointConfig().menuOffsetY,
+      configurable: true,
+    },
+  })
 
   // DOM ELEMENTS
   const parentContainer = document.querySelector(config.parentSelector)
@@ -123,6 +189,9 @@ function initMethod() {
 
     // Add scroll event listener
     contentContainer.addEventListener('scroll', updateMenuOnScroll)
+
+    // Add resize event listener for breakpoint changes
+    window.addEventListener('resize', handleResize)
   }
 
   function createSvgPath() {
@@ -548,6 +617,68 @@ function initMethod() {
   }
   // --- END UPDATED FUNCTION ---
 
+  // Function to handle breakpoint changes
+  function handleBreakpointChange() {
+    console.log('Breakpoint change detected, updating method layout...')
+
+    // Remove existing SVG container
+    const existingSvgContainer = contentWrapper.querySelector(
+      '.svg-menu-container'
+    )
+    if (existingSvgContainer) {
+      existingSvgContainer.remove()
+    }
+
+    // Reset debug elements references
+    debugElements = {}
+
+    // Recreate SVG and reposition items
+    createSvgPath()
+    positionMenuItemsOnPath()
+
+    // Update scale offset if menu items exist
+    if (menuItems.length > 0) {
+      requestAnimationFrame(() => {
+        menuItemHeight = menuItems[0].offsetHeight
+        scaleOffsetY = (menuItemHeight * (1.3 - 1)) / 2
+        console.log(
+          `Recalculated menuItemHeight: ${menuItemHeight}, scaleOffsetY: ${scaleOffsetY}`
+        )
+      })
+    }
+
+    // Update center coordinates
+    config.centerX = config.svgSize / 2
+    config.centerY = config.svgSize / 2
+
+    // Update controls display if they exist
+    if (typeof updateDisplayValues === 'function') {
+      updateDisplayValues()
+    }
+
+    console.log('Method layout updated for new breakpoint')
+  }
+
+  // Debounced resize handler
+  let resizeRafId = null
+  const handleResize = () => {
+    if (resizeRafId) {
+      cancelAnimationFrame(resizeRafId)
+    }
+
+    resizeRafId = requestAnimationFrame(() => {
+      // Only update if essential elements exist
+      if (
+        contentWrapper &&
+        menuContainer &&
+        contentContainer &&
+        menuItems.length > 0
+      ) {
+        handleBreakpointChange()
+      }
+    })
+  }
+
   // Add position controls alongside radius controls
   function addControls() {
     const controls = document.createElement('div')
@@ -559,20 +690,57 @@ function initMethod() {
     controls.style.padding = '10px'
     controls.innerHTML = `
       <div style="margin-bottom: 10px">
-        <label style="color:white">Radius: <span id="radius-value">${config.menuRadius}</span>px</label>
-        <input type="range" min="300" max="400" value="${config.menuRadius}" id="radius-slider" style="width:200px">
+        <label style="color:white">Breakpoint: <span id="breakpoint-value">${
+          getCurrentBreakpointConfig() === breakpointConfigs.mobileVertical
+            ? 'Mobile Vertical'
+            : getCurrentBreakpointConfig() ===
+              breakpointConfigs.mobileHorizontal
+            ? 'Mobile Horizontal'
+            : getCurrentBreakpointConfig() === breakpointConfigs.tablet
+            ? 'Tablet'
+            : 'Desktop'
+        }</span></label>
       </div>
       <div style="margin-bottom: 10px">
-        <label style="color:white">Offset X: <span id="offsetx-value">${config.menuOffsetX}</span>px</label>
-        <input type="range" min="200" max="350" value="${config.menuOffsetX}" id="offsetx-slider" style="width:200px">
+        <label style="color:white">SVG Size: <span id="svgsize-value">${
+          config.svgSize
+        }</span>px</label>
       </div>
       <div style="margin-bottom: 10px">
-        <label style="color:white">Offset Y: <span id="offsety-value">${config.menuOffsetY}</span>px</label>
-        <input type="range" min="200" max="350" value="${config.menuOffsetY}" id="offsety-slider" style="width:200px">
+        <label style="color:white">Menu Collection Size: <span id="menucollectionsize-value">${
+          config.menuCollectionSize
+        }</span>px</label>
+      </div>
+      <div style="margin-bottom: 10px">
+        <label style="color:white">Radius: <span id="radius-value">${
+          config.menuRadius
+        }</span>px</label>
+        <input type="range" min="300" max="400" value="${
+          config.menuRadius
+        }" id="radius-slider" style="width:200px">
+      </div>
+      <div style="margin-bottom: 10px">
+        <label style="color:white">Offset X: <span id="offsetx-value">${
+          config.menuOffsetX
+        }</span>px</label>
+        <input type="range" min="200" max="350" value="${
+          config.menuOffsetX
+        }" id="offsetx-slider" style="width:200px">
+      </div>
+      <div style="margin-bottom: 10px">
+        <label style="color:white">Offset Y: <span id="offsety-value">${
+          config.menuOffsetY
+        }</span>px</label>
+        <input type="range" min="200" max="350" value="${
+          config.menuOffsetY
+        }" id="offsety-slider" style="width:200px">
       </div>
       <button id="apply-changes">Apply Changes</button>
     `
     document.body.appendChild(controls)
+
+    // Update display values initially
+    updateDisplayValues()
 
     // Add event listeners for all controls
     const radiusSlider = document.getElementById('radius-slider')
@@ -581,7 +749,37 @@ function initMethod() {
     const radiusValue = document.getElementById('radius-value')
     const offsetXValue = document.getElementById('offsetx-value')
     const offsetYValue = document.getElementById('offsety-value')
+    const breakpointValue = document.getElementById('breakpoint-value')
+    const svgSizeValue = document.getElementById('svgsize-value')
+    const menuCollectionSizeValue = document.getElementById(
+      'menucollectionsize-value'
+    )
     const applyButton = document.getElementById('apply-changes')
+
+    // Function to update display values based on current breakpoint
+    const updateDisplayValues = () => {
+      const currentConfig = getCurrentBreakpointConfig()
+      const breakpointName =
+        currentConfig === breakpointConfigs.mobileVertical
+          ? 'Mobile Vertical'
+          : currentConfig === breakpointConfigs.mobileHorizontal
+          ? 'Mobile Horizontal'
+          : currentConfig === breakpointConfigs.tablet
+          ? 'Tablet'
+          : 'Desktop'
+
+      breakpointValue.textContent = breakpointName
+      svgSizeValue.textContent = config.svgSize
+      menuCollectionSizeValue.textContent = config.menuCollectionSize
+      radiusValue.textContent = config.menuRadius
+      offsetXValue.textContent = config.menuOffsetX
+      offsetYValue.textContent = config.menuOffsetY
+
+      // Update slider values to match current breakpoint
+      radiusSlider.value = config.menuRadius
+      offsetXSlider.value = config.menuOffsetX
+      offsetYSlider.value = config.menuOffsetY
+    }
 
     radiusSlider.addEventListener('input', () => {
       radiusValue.textContent = radiusSlider.value
@@ -594,16 +792,22 @@ function initMethod() {
     })
 
     applyButton.addEventListener('click', () => {
-      config.menuRadius = parseInt(radiusSlider.value)
-      config.menuOffsetX = parseInt(offsetXSlider.value)
-      config.menuOffsetY = parseInt(offsetYSlider.value)
+      const currentConfig = getCurrentBreakpointConfig()
+
+      // Update the current breakpoint configuration
+      currentConfig.menuRadius = parseInt(radiusSlider.value)
+      currentConfig.menuOffsetX = parseInt(offsetXSlider.value)
+      currentConfig.menuOffsetY = parseInt(offsetYSlider.value)
 
       // Update menu container position
-      menuContainer.style.top = `-${config.menuOffsetY}px`
-      menuContainer.style.left = `-${config.menuOffsetX}px`
+      menuContainer.style.top = `-${currentConfig.menuOffsetY}px`
+      menuContainer.style.left = `-${currentConfig.menuOffsetX}px`
 
       // Update menu items position
       positionMenuItemsOnPath()
+
+      // Update display values to reflect changes
+      updateDisplayValues()
     })
   }
 

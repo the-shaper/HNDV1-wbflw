@@ -1,5 +1,10 @@
 import anime from 'animejs'
 
+let tl = null
+let homeIntroContent = null
+let homeContainer = null
+let introWrapper = null
+
 function initTfIntro() {
   const targetSelector = '.tf-logo-intro'
   const el = document.querySelector(targetSelector)
@@ -15,8 +20,8 @@ function initTfIntro() {
   const desiredWidthPx = 2000
   const targetScaleX = originalWidth > 0 ? desiredWidthPx / originalWidth : 1
 
-  // Build timeline
-  const tl = anime.timeline({ targets: el, autoplay: false })
+  // Build timeline but do not play
+  tl = anime.timeline({ targets: el, autoplay: false })
 
   // 1) After 1111ms delay, scale uniformly down to 0.1 over 110ms
   tl.add({
@@ -41,18 +46,33 @@ function initTfIntro() {
     opacity: 0,
   })
 
+  // Cache elements for later
+  homeIntroContent = document.querySelector('.tf-home-intro-content')
+  homeContainer = document.querySelector('.home-container')
+  introWrapper = document.querySelector('.tf-intro-wrapper')
+
+  if (homeContainer) {
+    homeContainer.style.opacity = '0'
+  }
+
+  console.log('TF Intro setup complete - awaiting start signal')
+}
+
+function startTfIntro() {
+  if (!tl) {
+    console.warn('TF Intro not initialized - cannot start')
+    return
+  }
+
   tl.play()
 
   // After 1200ms, add .no-bg to .tf-home-intro-content (if present)
-  const homeIntroContent = document.querySelector('.tf-home-intro-content')
   if (homeIntroContent) {
     setTimeout(() => homeIntroContent.classList.add('no-bg'), 1333)
   }
 
   // After 2222ms, fade in .home-container from 0 → 1 opacity over 222ms
-  const homeContainer = document.querySelector('.home-container')
   if (homeContainer) {
-    homeContainer.style.opacity = '0'
     anime({
       targets: homeContainer,
       opacity: 1,
@@ -63,10 +83,13 @@ function initTfIntro() {
   }
 
   // After 3333ms, add .non to .tf-intro-wrapper (if present)
-  const introWrapper = document.querySelector('.tf-intro-wrapper')
   if (introWrapper) {
     setTimeout(() => introWrapper.classList.add('non'), 2222)
   }
+
+  console.log('TF Intro animation started')
 }
+
+export { initTfIntro, startTfIntro }
 
 export default initTfIntro

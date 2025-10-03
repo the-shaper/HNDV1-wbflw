@@ -1,5 +1,5 @@
 ---
-description: Development environment
+description: Development environment context
 alwaysApply: false
 ---
 
@@ -7,3 +7,5 @@ This project runs on a vite-based node server. My workflow is to 'npm run dev' e
 This means that you keep in mind that whenever we implement a new function, snippet, page, etc. The server will already be running and you don't need to re-run it.
 This also means that you will avoid at all costs to automatically create new live server or development environments such as python or any other thing.
 Whenever there is a need to reset the server, you will inform me first, and you won't act upon it without asking.
+
+Once this codebase gets git-pushed, it gets deployed into vercel and from there I use it as a CDN to export the src/main.js and import it into webflow

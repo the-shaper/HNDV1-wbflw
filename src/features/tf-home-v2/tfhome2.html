@@ -49,32 +49,5 @@
     -->
     <!-- Twilight Fringe script auto-initialises instances with the `.tf-fringe-bg` class -->
     <script type="module" src="twilightFringe.js"></script>
-
-    <!-- CRT GLSL Integration Test -->
-    <div
-      id="crt-test-container"
-      style="
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        width: 400px;
-        height: 300px;
-        background: #1a1a1a;
-        border-radius: 8px;
-        border: 2px solid #333;
-        z-index: 10;
-      "
-    >
-      <h3 style="margin: 10px; color: #fff; font-size: 14px">CRT GLSL Test</h3>
-    </div>
-
-    <script type="module">
-      import { initializeCrtGlsl } from './crt-glsl/crt-glsl.js'
-
-      // Initialize CRT GLSL in the test container
-      initializeCrtGlsl({
-        containerSelector: '#crt-test-container',
-      })
-    </script>
   </body>
 </html>

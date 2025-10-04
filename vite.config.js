@@ -33,7 +33,12 @@ export default defineConfig(({ command }) => {
               format: 'es',
               entryFileNames: 'main.js',
               chunkFileNames: 'assets/[name]-[hash].js',
-              assetFileNames: 'assets/[name]-[hash][extname]',
+              assetFileNames: (assetInfo) => {
+                if (assetInfo.name && assetInfo.name.endsWith('.css')) {
+                  return 'style.css'
+                }
+                return 'assets/[name]-[hash][extname]'
+              },
             },
           },
         }

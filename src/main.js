@@ -21,7 +21,12 @@ import initCategoriesMenu from './features/portfolio/categories-menu'
 
 console.log('Welcome to Vite + JS + Webflow!')
 
-document.addEventListener('DOMContentLoaded', () => {
+function initializeAppOnce() {
+  if (window.__tfMainInitialized) {
+    return
+  }
+  window.__tfMainInitialized = true
+
   initPortfolio()
   initPortfolioScroll()
   initGalleryTabs()
@@ -374,6 +379,12 @@ document.addEventListener('DOMContentLoaded', () => {
       'Home page element not found. Skipping TF Home UI and related module loading.'
     )
   }
-})
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeAppOnce)
+} else {
+  initializeAppOnce()
+}
 
 // stopWorkingHoursAnimation() // Keep this outside DOMContentLoaded if it's meant to be available globally or called elsewhere

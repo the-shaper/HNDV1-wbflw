@@ -1,62 +1,57 @@
 import { defineConfig } from 'vite'
 import path from 'path'
 
-// vite.config.js
-export default defineConfig(({ command }) => ({
-  plugins: [],
-  optimizeDeps: {
-    exclude: ['aurora.js', 'twilightFringe.js', 'energy.js'],
-  },
-  server: {
-    host: 'localhost',
-    port: 3000,
-    cors: '*',
-    hmr: {
-      host: 'localhost',
-      protocol: 'ws',
+export default defineConfig(({ command }) => {
+  const isBuild = command === 'build'
+
+  return {
+    base: isBuild ? 'https://twilight-fringe.vercel.app/' : '/',
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'process.env': {},
     },
-  },
-  build:
-    command === 'build'
+    server: {
+      host: 'localhost',
+      port: 3000,
+      cors: '*',
+      hmr: { host: 'localhost', protocol: 'ws' },
+    },
+    build: isBuild
       ? {
-          minify: true,
-          manifest: true,
+          target: 'esnext',
+          outDir: 'dist',
+          assetsDir: '',
+          cssCodeSplit: true,
+          // Library mode ensures an ES entry file at dist/main.js while keeping dynamic imports as chunks
           lib: {
             entry: path.resolve(__dirname, 'src/main.js'),
-            name: 'Main',
-            formats: ['umd'],
+            formats: ['es'],
             fileName: () => 'main.js',
           },
           rollupOptions: {
-            external: ['jquery'],
             output: {
-              globals: {
-                jquery: '$',
-              },
-              inlineDynamicImports: true,
-              esModule: false,
-              compact: true,
-              assetFileNames: (assetInfo) => {
-                // Ensure assets have absolute URLs in production
-                return `https://twilight-fringe.vercel.app/${assetInfo.name}`
-              },
+              format: 'es',
+              entryFileNames: 'main.js',
+              chunkFileNames: 'assets/[name]-[hash].js',
+              assetFileNames: 'assets/[name]-[hash][extname]',
             },
           },
-          // Set base public path for assets
-          assetsDir: '',
-          publicPath: 'https://twilight-fringe.vercel.app/',
         }
       : {},
-  resolve: {
-    alias: [
-      {
-        find: /^three$/,
-        replacement: path.resolve(
-          __dirname,
-          'node_modules/three/build/three.module.js'
-        ),
-      },
-    ],
-  },
-  assetsInclude: ['**/*.riv'],
-}))
+    resolve: {
+      alias: [
+        {
+          find: /^three$/,
+          replacement: path.resolve(
+            __dirname,
+            'node_modules/three/build/three.module.js'
+          ),
+        },
+      ],
+    },
+    assetsInclude: ['**/*.riv'],
+    optimizeDeps: {
+      exclude: ['aurora.js', 'twilightFringe.js', 'energy.js'],
+    },
+  }
+})

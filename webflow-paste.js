@@ -1,14 +1,15 @@
 ;(function () {
   const LOCALHOST_URL = [
     'http://localhost:3000/@vite/client',
-    'http://localhost:3000/src/main.ts',
+    'http://localhost:3000/src/main.js',
   ]
-  const PROD_URL = ['https://MY-PROJECT.netlify.app/main.js']
+  const PROD_URL = ['https://twilight-fringe.vercel.app/main.js']
 
   function createScripts(arr, isDevMode) {
     return arr.map(function (url) {
       const s = document.createElement('script')
       s.src = url
+      s.defer = true
 
       if (isDevMode) {
         s.type = 'module'

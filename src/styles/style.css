@@ -293,6 +293,36 @@ body::selection {
   );
 }
 
+/* marquee Services tab */
+#marquee-content {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 15%,
+    black 85%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 15%,
+    black 85%,
+    transparent
+  );
+}
+
+#marquee-track {
+  display: flex;
+  will-change: transform; /* Optimize for animations */
+  overflow: visible; /* Allow content to be visible for seamless scrolling */
+}
+
+.marquee-text {
+  flex-shrink: 0; /* Prevent shrinking */
+  visibility: visible; /* Ensure text is visible */
+  margin-right: 17px; /* Increased spacing between text elements */
+}
+
 /* .tf-home-intro-wrapper
 @keyframes slideInFromLeft {
   0% {

@@ -115,6 +115,21 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Failed to load the service select module:', error)
       })
 
+    // Dynamically import and initialize marquee
+    import('./features/agency/marquee')
+      .then((module) => {
+        if (typeof module.default === 'function') {
+          module.default()
+        } else {
+          console.error(
+            'Error: initMarquee not exported as default function or is not a function.'
+          )
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load the marquee module:', error)
+      })
+
     // Clean Slate 3D - init on load if container exists
     // TODO: Re-enable when needed for future Three.js implementations
     // const cleanSlateContainer = document.querySelector('.cleanslate-container')

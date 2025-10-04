@@ -1,7 +1,10 @@
 import { Rive, Fit } from '@rive-app/webgl2' // WebGL 2 renderer
 
 // Build an absolute URL for the Rive binary; Vite will copy it to /dist
-const aywClaraRiv = new URL('./ayw_clara.riv', import.meta.url).href
+const aywClaraRiv = new URL(
+  'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GZm7YR4cDJYkZISKqrxmtPBceTgy92pRAnHVo',
+  import.meta.url
+).href
 
 // Match the actual state machine name exported by the file
 const AYW_STATE_MACHINE = 'clara-switch-machine'

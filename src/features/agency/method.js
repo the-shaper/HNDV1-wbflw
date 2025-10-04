@@ -14,9 +14,9 @@ function initMethod() {
       // max-width: 430px
       svgSize: 20,
       menuCollectionSize: 30,
-      menuRadius: 170,
+      menuRadius: 164,
       menuOffsetX: 50,
-      menuOffsetY: 25,
+      menuOffsetY: 25.6,
     },
     mobileHorizontal: {
       // max-width: 568px

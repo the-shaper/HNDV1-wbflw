@@ -36,8 +36,15 @@ export default defineConfig(({ command }) => ({
               inlineDynamicImports: true,
               esModule: false,
               compact: true,
+              assetFileNames: (assetInfo) => {
+                // Ensure assets have absolute URLs in production
+                return `https://twilight-fringe.vercel.app/${assetInfo.name}`
+              },
             },
           },
+          // Set base public path for assets
+          assetsDir: '',
+          publicPath: 'https://twilight-fringe.vercel.app/',
         }
       : {},
   resolve: {

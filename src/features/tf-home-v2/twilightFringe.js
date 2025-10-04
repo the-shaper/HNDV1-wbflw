@@ -99,7 +99,16 @@ const fallbackSettings = {
 
 // Load settings from JSON with multiple path attempts
 async function loadDefaultSettings() {
+  // Determine if we're in production or development
+  const isProduction =
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1')
+
+  const baseUrl = isProduction ? 'https://twilight-fringe.vercel.app/' : '/'
+
   const possiblePaths = [
+    `${baseUrl}twilightModes.json`,
+    `${baseUrl}src/features/tf-home-v2/twilightModes.json`,
     './twilightModes.json',
     './src/features/tf-home-v2/twilightModes.json',
     '/src/features/tf-home-v2/twilightModes.json',
@@ -608,11 +617,31 @@ export async function createTwilightFringe(containerEl, options = {}) {
       return
     }
 
+    // Determine if we're in production or development
+    const isProduction =
+      !window.location.hostname.includes('localhost') &&
+      !window.location.hostname.includes('127.0.0.1')
+
+    const baseUrl = isProduction ? 'https://twilight-fringe.vercel.app/' : '/'
+
     // A cleaned-up, non-redundant list of paths to try.
-    // 1. The path as provided (for paths relative to HTML or absolute paths).
-    // 2. The path resolved relative to the script module (more robust).
     const possibleImagePaths = [
-      ...new Set([imagePath, new URL(imagePath, import.meta.url).href]),
+      ...new Set(
+        [
+          imagePath,
+          new URL(imagePath, import.meta.url).href,
+          // Try with the production base URL for relative paths
+          imagePath.startsWith('./')
+            ? `${baseUrl}${imagePath.substring(2)}`
+            : null,
+          imagePath.startsWith('/')
+            ? `${baseUrl}${imagePath.substring(1)}`
+            : null,
+          // Try specific known paths
+          `${baseUrl}tf-bg-imgs/headbg.png`,
+          `${baseUrl}src/features/tf-home-v2/tf-bg-imgs/headbg.png`,
+        ].filter(Boolean)
+      ),
     ]
 
     console.log(

@@ -1,7 +1,7 @@
 import { Rive, Fit } from '@rive-app/webgl2' // WebGL 2 renderer
 
 const twilightRivUrl =
-  'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GytzttPxPd9iEYCg6HMznOBZwoqIaeFupWNVt'
+  'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GrioFbQWAkqeTZGVaJ6CH75D1Wcx9wUvlYOmy'
 
 /**
  * Boot a Rive animation on the supplied canvas selector.

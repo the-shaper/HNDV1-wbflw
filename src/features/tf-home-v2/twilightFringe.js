@@ -1,7 +1,6 @@
 console.log('[TwilightFringe] Script file loaded successfully!')
 import * as THREE from 'three'
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js'
-import modesJson from './twilightModes.json'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
@@ -10,12 +9,8 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 // Add logging prefix for easy identification
 const LOG_PREFIX = '[TwilightFringe]'
 
-// Detect Safari to tune quality/perf tradeoffs
-const IS_SAFARI =
-  /safari/i.test(navigator.userAgent) &&
-  !/chrome|crios|android/i.test(navigator.userAgent)
-// Clamp the renderer pixel ratio – slightly lower on Safari for stability
-const MAX_PIXEL_RATIO = IS_SAFARI ? 1.25 : 1.5
+// Clamp the renderer pixel ratio – global constant
+const MAX_PIXEL_RATIO = 1.5
 
 // --- Global PNG load signaling ---
 const TF_GLOBAL = (window.__twilightFringe = window.__twilightFringe || {
@@ -125,35 +120,21 @@ const fallbackSettings = {
 
 // Load settings from JSON with multiple path attempts
 async function loadDefaultSettings() {
-  // First try the bundled JSON (build-time import) to avoid runtime fetches/CORS
-  try {
-    if (modesJson && modesJson.default) {
-      const defaultSettings = {
-        ...fallbackSettings,
-        ...(modesJson.default || {}),
-      }
-      console.log(`${LOG_PREFIX} Loaded settings from bundled JSON import`)
-      return defaultSettings
-    }
-  } catch (e) {
-    console.log(
-      `${LOG_PREFIX} Bundled JSON import not available, will fetch`,
-      e
-    )
-  }
+  // Determine if we're in production or development
+  const isProduction =
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1')
 
-  // Prefer same-origin to avoid CORS and 404s across hosts/CDNs
-  const baseUrl = `${window.location.origin}/`
+  const baseUrl = isProduction ? 'https://twilight-fringe.vercel.app/' : '/'
 
   const possiblePaths = [
-    // Same-origin public root (recommended: put file in /public)
     `${baseUrl}twilightModes.json`,
-    // Relative fallbacks during local dev
+    `${baseUrl}src/features/tf-home-v2/twilightModes.json`,
     './twilightModes.json',
-    'twilightModes.json',
     './src/features/tf-home-v2/twilightModes.json',
     '/src/features/tf-home-v2/twilightModes.json',
-    // Last resort: relative to this module
+    'twilightModes.json',
+    // Add the current script's directory relative path
     new URL('./twilightModes.json', import.meta.url).href,
   ]
 
@@ -507,9 +488,9 @@ export async function createTwilightFringe(containerEl, options = {}) {
   camera.position.z = 3
 
   console.log(`${LOG_PREFIX} Creating WebGL renderer...`)
-  const pixelRatio = Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO) // Cap DPR
+  const pixelRatio = Math.min(window.devicePixelRatio, 2) // Cap at 2x for high DPI
   const renderer = new THREE.WebGLRenderer({
-    antialias: !IS_SAFARI,
+    antialias: true,
     alpha: true,
     powerPreference: 'high-performance',
     precision: 'mediump', // Use lower precision for better performance
@@ -592,9 +573,7 @@ export async function createTwilightFringe(containerEl, options = {}) {
   }
 
   console.log(`${LOG_PREFIX} Creating geometry and material...`)
-  // Reduce mesh detail on Safari to improve responsiveness (Icosahedron detail grows fast)
-  const meshDetail = IS_SAFARI ? 4 : 64
-  const geometry = new THREE.IcosahedronGeometry(1, meshDetail)
+  const geometry = new THREE.IcosahedronGeometry(1, 64)
   const material = new THREE.ShaderMaterial({
     vertexShader: NOISE_SHADER_CHUNK + VERTEX_SHADER_SOURCE,
     fragmentShader: FRAGMENT_SHADER_SOURCE,
@@ -662,8 +641,12 @@ export async function createTwilightFringe(containerEl, options = {}) {
       return
     }
 
-    // Prefer same-origin to avoid CORS
-    const baseUrl = `${window.location.origin}/`
+    // Determine if we're in production or development
+    const isProduction =
+      !window.location.hostname.includes('localhost') &&
+      !window.location.hostname.includes('127.0.0.1')
+
+    const baseUrl = isProduction ? 'https://twilight-fringe.vercel.app/' : '/'
 
     // A cleaned-up, non-redundant list of paths to try.
     const possibleImagePaths = [
@@ -957,11 +940,6 @@ export async function createTwilightFringe(containerEl, options = {}) {
   bloomPass.strength = settings.glowStrength
   bloomPass.radius = settings.glowRadius
   bloomPass.enabled = settings.glowEnabled
-  // Safari is more sensitive to heavy post-processing
-  if (IS_SAFARI) {
-    bloomPass.strength = Math.min(bloomPass.strength, 0.6)
-    bloomPass.radius = Math.min(bloomPass.radius, 0.2)
-  }
   composer.addPass(bloomPass)
 
   function createGUI() {

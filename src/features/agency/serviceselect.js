@@ -270,6 +270,15 @@ function initServiceSelect() {
           console.log('Post-expand: Centered container x to', snapPoints[0])
           updateSlide(snapPoints[0]) // Lock expansion on final center
           console.log('Post-expand onResize complete - locked on panel 0')
+
+          // Remove .init class from #panel-1 after draggable initialization
+          const panel1 = document.querySelector('#panel-1')
+          if (panel1 && panel1.classList.contains('init')) {
+            panel1.classList.remove('init')
+            console.log(
+              '🎯 Removed .init class from #panel-1 after draggable initialization'
+            )
+          }
         })
       } else {
         // Fallback if no timeline (direct set)
@@ -281,6 +290,15 @@ function initServiceSelect() {
           console.log('Fallback: Centered container x to', snapPoints[0])
           updateSlide(snapPoints[0])
           console.log('Fallback delayed recalc - locked on panel 0')
+
+          // Remove .init class from #panel-1 after draggable initialization (fallback)
+          const panel1 = document.querySelector('#panel-1')
+          if (panel1 && panel1.classList.contains('init')) {
+            panel1.classList.remove('init')
+            console.log(
+              '🎯 Removed .init class from #panel-1 after draggable initialization (fallback)'
+            )
+          }
         })
       }
       panels[0].classList.remove('collapsed')
@@ -513,6 +531,15 @@ function initServiceSelect() {
       }
     })
     console.log('✅ Initial state setup complete.')
+
+    // Remove .init class from #panel-1 after accordion is fully initialized (only on initial page load)
+    const panel1 = document.querySelector('#panel-1')
+    if (panel1 && panel1.classList.contains('init')) {
+      panel1.classList.remove('init')
+      console.log(
+        '🎯 Removed .init class from #panel-1 after accordion initialization'
+      )
+    }
   }
 
   // Function to collapse a panel with animation
@@ -867,6 +894,15 @@ function initServiceSelect() {
               expandPanel(panels[0])
               panels[0].classList.remove('collapsed')
               currentSlide = 0
+
+              // Remove .init class from #panel-1 after draggable mode switch initialization
+              const panel1 = document.querySelector('#panel-1')
+              if (panel1 && panel1.classList.contains('init')) {
+                panel1.classList.remove('init')
+                console.log(
+                  '🎯 Removed .init class from #panel-1 after draggable mode switch'
+                )
+              }
 
               // Update Draggable onDragEnd (like reference):
               draggableInstance = Draggable.create(container, {

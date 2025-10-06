@@ -277,11 +277,6 @@ function initializeAppOnce() {
       'Home page detected. Initializing home-specific modules with Rive dependency.'
     )
 
-    // Load Twilight Fringe background effect first (auto-initialises via side-effects)
-    import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
-      console.error('Failed to load Twilight Fringe module:', error)
-    })
-
     // Gate Rive init until TwilightFringe PNG is ready (or timeout)
     const riveCanvas = document.getElementById('rive-canvas')
     let riveLoaded = Promise.resolve()
@@ -334,11 +329,38 @@ function initializeAppOnce() {
         })
     }
 
-    // Chain TF Home UI and Twilight after Rive load
+    // Load Twilight Fringe background effect first (auto-initialises via side-effects)
+    import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
+      console.error('Failed to load Twilight Fringe module:', error)
+    })
+
+    // Initialize CRT GLSL WebGL instance after TwilightFringe is set up; start its animation after Rive loads
+    const crtIntroEl = document.querySelector('[data-crt-intro]')
+    if (crtIntroEl) {
+      const crtImport = import('./features/tf-home-v2/crt-glsl/crt-glsl.js')
+      crtImport
+        .then(({ initializeCrtGlsl }) => {
+          const bg = crtIntroEl.getAttribute('data-crt-bg')
+          const cfg = bg
+            ? { container: crtIntroEl, initialBgColorHex: bg }
+            : { container: crtIntroEl }
+          initializeCrtGlsl(cfg)
+        })
+        .catch((err) => console.error('Failed to import CRT GLSL:', err))
+
+      // Start CRT animation after Rive loads
+      riveLoaded.then(() => {
+        crtImport
+          .then(({ startCrtAnimation }) => {
+            if (typeof startCrtAnimation === 'function') startCrtAnimation()
+          })
+          .catch((err) => console.error('Failed to start CRT animation:', err))
+      })
+    }
+
+    // Chain TF Home UI after Rive load
     riveLoaded.then(() => {
-      console.log(
-        'Rive loaded (or skipped). Initializing TF Home UI and Twilight.'
-      )
+      console.log('Rive loaded (or skipped). Initializing TF Home UI.')
       import('./features/tf-home-v2/tf-home-ui.js')
         .then((module) => {
           if (typeof module.default === 'function') {
@@ -353,34 +375,6 @@ function initializeAppOnce() {
           console.error('Failed to load the TF Home UI module:', error)
         })
     })
-
-    // Webflow: auto-initialize CRT Intro on elements marked with data-crt-intro
-    const crtIntroEl = document.querySelector('[data-crt-intro]')
-    if (crtIntroEl) {
-      const crtImport = import('./features/tf-home-v2/crt-glsl/crt-glsl.js')
-      crtImport
-        .then(({ initializeCrtGlsl }) => {
-          const bg = crtIntroEl.getAttribute('data-crt-bg')
-          const cfg = bg
-            ? { container: crtIntroEl, initialBgColorHex: bg }
-            : { container: crtIntroEl }
-          initializeCrtGlsl(cfg) // Setup WebGL instance early
-          console.log(
-            'CRT GLSL setup complete - awaiting Rive for animation start'
-          )
-        })
-        .catch((err) => console.error('Failed to import CRT GLSL:', err))
-
-      // Start CRT animation after Rive loads
-      riveLoaded.then(() => {
-        crtImport
-          .then(({ startCrtAnimation }) => {
-            startCrtAnimation()
-            console.log('CRT animation started after Rive load')
-          })
-          .catch((err) => console.error('Failed to start CRT animation:', err))
-      })
-    }
 
     // TF Intro: initialize when .tf-logo-intro is present
     const tfLogoIntroEl = document.querySelector('.tf-logo-intro')

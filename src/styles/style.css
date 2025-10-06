@@ -311,6 +311,15 @@ body::selection {
   );
 }
 
+.pow-column {
+  mask-image: linear-gradient(to top, #fff0 5%, var(--mintier-creamier) 11%);
+  -webkit-mask-image: linear-gradient(
+    to top,
+    #fff0 5%,
+    var(--mintier-creamier) 11%
+  );
+}
+
 /* marquee Services tab */
 #marquee-content {
   -webkit-mask-image: linear-gradient(
@@ -416,4 +425,13 @@ header {
   .tf-home-nav {
     margin-bottom: 18svh;
   }
+}
+
+.pow-modal-content-wrapper {
+  mask-image: linear-gradient(to top, #fff0 5%, var(--mintier-creamier) 11%);
+  -webkit-mask-image: linear-gradient(
+    to top,
+    #fff0 5%,
+    var(--mintier-creamier) 11%
+  );
 }

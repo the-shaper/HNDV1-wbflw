@@ -104,6 +104,24 @@ body.initial-load .slider-bg_component {
   mask: var(--mask);
 } */
 
+/* showcaste-slate */
+.showcase-slate-wrapper {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 5%,
+    black 90%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 5%,
+    black 90%,
+    transparent 100%
+  );
+}
+
 /* method dial */
 .text-wrapper {
   display: inline-block;
@@ -385,12 +403,17 @@ header {
 
 @media screen and (max-width: 479px) {
   .rive-canvas {
-    width: 100svw;
-    height: 55svh;
+    /* width: 100svw; */
+
+    height: 77svh;
   }
 
   .mono-paragraph.tf-home-intro {
     font-size: 0.69rem;
     line-height: 1rem;
+  }
+
+  .tf-home-nav {
+    margin-bottom: 18svh;
   }
 }

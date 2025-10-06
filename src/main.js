@@ -277,11 +277,56 @@ function initializeAppOnce() {
       'Home page detected. Initializing home-specific modules with Rive dependency.'
     )
 
-    // Init Rive if present - returns promise
+    // Load Twilight Fringe background effect first (auto-initialises via side-effects)
+    import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
+      console.error('Failed to load Twilight Fringe module:', error)
+    })
+
+    // Gate Rive init until TwilightFringe PNG is ready (or timeout)
     const riveCanvas = document.getElementById('rive-canvas')
     let riveLoaded = Promise.resolve()
     if (riveCanvas) {
-      riveLoaded = import('./features/tf-home-v2/rive-runtime/script.js')
+      const waitForPngReady = () =>
+        new Promise((resolve) => {
+          const already = window.__twilightFringe?.pngStatus
+          if (already === 'ready' || already === 'skipped') {
+            resolve()
+            return
+          }
+          const onReady = () => {
+            window.removeEventListener('twilightFringe:pngReady', onReady)
+            window.removeEventListener('twilightFringe:pngSkipped', onSkip)
+            window.removeEventListener('twilightFringe:pngFailed', onFail)
+            resolve()
+          }
+          const onSkip = () => {
+            window.removeEventListener('twilightFringe:pngReady', onReady)
+            window.removeEventListener('twilightFringe:pngSkipped', onSkip)
+            window.removeEventListener('twilightFringe:pngFailed', onFail)
+            resolve()
+          }
+          const onFail = () => {
+            window.removeEventListener('twilightFringe:pngReady', onReady)
+            window.removeEventListener('twilightFringe:pngSkipped', onSkip)
+            window.removeEventListener('twilightFringe:pngFailed', onFail)
+            resolve()
+          }
+          window.addEventListener('twilightFringe:pngReady', onReady)
+          window.addEventListener('twilightFringe:pngSkipped', onSkip)
+          window.addEventListener('twilightFringe:pngFailed', onFail)
+          // Timeout safety (3s): don't block forever if assets slow
+          setTimeout(() => {
+            try {
+              window.removeEventListener('twilightFringe:pngReady', onReady)
+              window.removeEventListener('twilightFringe:pngSkipped', onSkip)
+              window.removeEventListener('twilightFringe:pngFailed', onFail)
+            } catch (e) {}
+            resolve()
+          }, 3000)
+        })
+
+      riveLoaded = waitForPngReady()
+        .then(() => import('./features/tf-home-v2/rive-runtime/script.js'))
         .then(({ default: initRiveCanvas }) => initRiveCanvas())
         .catch((err) => {
           console.error('Failed to load Rive runtime:', err)
@@ -307,11 +352,6 @@ function initializeAppOnce() {
         .catch((error) => {
           console.error('Failed to load the TF Home UI module:', error)
         })
-
-      // Load Twilight Fringe background effect (auto-initialises via side-effects)
-      import('./features/tf-home-v2/twilightFringe.js').catch((error) => {
-        console.error('Failed to load Twilight Fringe module:', error)
-      })
     })
 
     // Webflow: auto-initialize CRT Intro on elements marked with data-crt-intro

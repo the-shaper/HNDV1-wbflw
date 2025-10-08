@@ -5,8 +5,6 @@ import {
 import anime from 'animejs'
 import tippy from 'tippy.js'
 import { roundArrow } from 'tippy.js'
-import 'tippy.js/dist/svg-arrow.css'
-import 'tippy.js/animations/shift-away.css'
 
 // We'll need access to the Accordion instance later for navigation
 // Assuming Accordion class is exported from accordion.js
@@ -1195,7 +1193,6 @@ class DashboardController {
       content(reference) {
         return reference.getAttribute('data-tooltip')
       },
-      followCursor: true,
       offset: [10, 10],
       placement: 'left',
       arrow: roundArrow,

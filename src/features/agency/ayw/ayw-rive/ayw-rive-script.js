@@ -1,10 +1,8 @@
 import { Rive, Fit } from '@rive-app/webgl2' // WebGL 2 renderer
 
-// Build an absolute URL for the Rive binary (original behavior)
-const aywClaraRiv = new URL(
-  'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GZm7YR4cDJYkZISKqrxmtPBceTgy92pRAnHVo',
-  import.meta.url
-).href
+// Direct URL string (matches working script.js pattern)
+const aywClaraRiv =
+  'https://246nut3nns.ufs.sh/f/Il8RTlUMQ40GZm7YR4cDJYkZISKqrxmtPBceTgy92pRAnHVo'
 
 // Match the actual state machine name exported by the file
 const AYW_STATE_MACHINE = 'clara-switch-machine'

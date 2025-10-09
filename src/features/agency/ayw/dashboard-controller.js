@@ -142,6 +142,7 @@ class DashboardController {
     // --- NEW: Bind POW Event Handlers ---
     this.handlePowButtonClick = this.handlePowButtonClick.bind(this)
     this.handlePowCheckboxChange = this.handlePowCheckboxChange.bind(this)
+    this.updatePriceDisplay = this.updatePriceDisplay.bind(this)
 
     this.init()
   }
@@ -614,29 +615,8 @@ class DashboardController {
       // e.g. if a non-cost affecting button is clicked, the price display shouldn't disappear.
     }
 
-    // NEW: Calculate the total price (sum of current craft and energy costs)
-    const priceToDisplay = this.currentCraftCost + this.currentEnergyCost
-    console.log(
-      `Dashboard: Calculating total price: Craft=${this.currentCraftCost}, Energy=${this.currentEnergyCost}, Total=${priceToDisplay}`
-    )
-
-    // Update the price display element if found
-    if (this.priceDisplayElement) {
-      // Format the number using toLocaleString for thousand separators and no decimals
-      const formattedPrice = priceToDisplay.toLocaleString(undefined, {
-        // Use undefined for default locale or specify 'en-US'
-        minimumFractionDigits: 0, // Ensure no decimal places
-        maximumFractionDigits: 0, // Ensure no decimal places
-      })
-
-      // Prepend the dollar sign
-      this.priceDisplayElement.textContent = `$${formattedPrice}`
-      console.log(`Dashboard: Updated #aywLivePrice to $${formattedPrice}`)
-    } else {
-      console.warn(
-        'Dashboard: Cannot update price display, #aywLivePrice element not found.'
-      )
-    }
+    // NEW: Update the price display (which now handles POW discount)
+    this.updatePriceDisplay()
 
     // 5. Dispatch events or call functions
     const eventDetail = {
@@ -1060,6 +1040,47 @@ class DashboardController {
 
     // Re-evaluate form completion state after checkbox change
     this.evaluateFormCompletion()
+
+    // Update the price display to apply/remove POW discount
+    this.updatePriceDisplay()
+  }
+
+  // --- NEW: Method to Calculate and Update Price Display (with POW discount) ---
+  updatePriceDisplay() {
+    if (!this.priceDisplayElement) {
+      console.warn(
+        'Dashboard: Cannot update price display, #aywLivePrice element not found.'
+      )
+      return
+    }
+
+    // Calculate base price (sum of current craft and energy costs)
+    let priceToDisplay = this.currentCraftCost + this.currentEnergyCost
+
+    // Check if POW is enabled and apply 20% discount
+    const isPowEnabled = this.powInput?.checked || false
+    if (isPowEnabled) {
+      priceToDisplay = priceToDisplay / 1.2
+      console.log(
+        `Dashboard: POW discount applied. Base: ${
+          this.currentCraftCost + this.currentEnergyCost
+        }, Discounted: ${priceToDisplay}`
+      )
+    }
+
+    console.log(
+      `Dashboard: Calculating total price: Craft=${this.currentCraftCost}, Energy=${this.currentEnergyCost}, POW=${isPowEnabled}, Total=${priceToDisplay}`
+    )
+
+    // Format the number using toLocaleString for thousand separators and no decimals
+    const formattedPrice = priceToDisplay.toLocaleString(undefined, {
+      minimumFractionDigits: 0, // Ensure no decimal places
+      maximumFractionDigits: 0, // Ensure no decimal places
+    })
+
+    // Prepend the dollar sign
+    this.priceDisplayElement.textContent = `$${formattedPrice}`
+    console.log(`Dashboard: Updated #aywLivePrice to $${formattedPrice}`)
   }
 
   // --- NEW: Setup POW Toggle Listeners ---

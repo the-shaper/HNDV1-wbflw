@@ -248,6 +248,16 @@ function initTfHomeUI() {
         button.classList.remove('blur')
       }
     })
+
+    // Handle rive-canvas pointer events
+    const riveCanvas = document.getElementById('rive-canvas')
+    if (riveCanvas) {
+      if (anyActive) {
+        riveCanvas.style.pointerEvents = 'none'
+      } else {
+        riveCanvas.style.pointerEvents = 'auto'
+      }
+    }
   }
 
   // Initialize LCD toggle functionality
@@ -260,21 +270,30 @@ function initTfHomeUI() {
 
       let isInsideAnyContainer = false
 
-      // Check parentQuads
-      parentQuads.forEach((quadId) => {
-        const quad = document.getElementById(quadId)
-        if (quad && quad.contains(e.target)) {
-          isInsideAnyContainer = true
-        }
-      })
+      // Check if click is on rive-canvas - treat as outside click
+      const riveCanvas = document.getElementById('rive-canvas')
+      if (
+        riveCanvas &&
+        (riveCanvas === e.target || riveCanvas.contains(e.target))
+      ) {
+        isInsideAnyContainer = false
+      } else {
+        // Check parentQuads
+        parentQuads.forEach((quadId) => {
+          const quad = document.getElementById(quadId)
+          if (quad && quad.contains(e.target)) {
+            isInsideAnyContainer = true
+          }
+        })
 
-      // Check triggers
-      lcdTriggers.forEach((triggerId) => {
-        const trigger = document.getElementById(triggerId)
-        if (trigger && trigger.contains(e.target)) {
-          isInsideAnyContainer = true
-        }
-      })
+        // Check triggers
+        lcdTriggers.forEach((triggerId) => {
+          const trigger = document.getElementById(triggerId)
+          if (trigger && trigger.contains(e.target)) {
+            isInsideAnyContainer = true
+          }
+        })
+      }
 
       if (!isInsideAnyContainer) {
         // Close all active listeners

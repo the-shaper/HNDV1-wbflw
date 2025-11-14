@@ -215,6 +215,40 @@ function initAgencyTabs() {
         if (tabIndex === 2) {
           // Remove .non class when tab 2 is active
           showcaseBgElement.classList.remove('non')
+
+          // Initialize Clean Slate 3D when tab 2 becomes active (only once)
+          if (!window.__cleanSlate3dInitialized) {
+            window.__cleanSlate3dInitialized = true
+            const cleanSlateContainer = document.querySelector(
+              '.cleanslate-container'
+            )
+            if (cleanSlateContainer) {
+              import('../../primitives/three-js/clean-slate3d/cleanSlate3d.js')
+                .then((module) => {
+                  if (typeof module.default === 'function') {
+                    // Small delay to ensure container is visible and has dimensions
+                    setTimeout(() => {
+                      module.default(cleanSlateContainer)
+                      console.log(
+                        'Clean Slate 3D initialized on tab 2 activation.'
+                      )
+                    }, 100)
+                  } else {
+                    console.error(
+                      'Error: initCleanSlate3d not exported as default function or is not a function.'
+                    )
+                  }
+                })
+                .catch((error) => {
+                  console.error(
+                    'Failed to load the Clean Slate 3D module:',
+                    error
+                  )
+                })
+            } else {
+              console.log('No .cleanslate-container found – skipping 3D init.')
+            }
+          }
         } else {
           // Add .non class when tab 1 or 3 is active (or any other tab)
           showcaseBgElement.classList.add('non')
